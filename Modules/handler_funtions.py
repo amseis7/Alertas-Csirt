@@ -1,15 +1,13 @@
-import sys
-
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from email.mime.multipart import MIMEMultipart
 from googleapiclient.discovery import build
-from datetime import datetime, timedelta
-from email.mime.text import MIMEText
 import Modules.handler_variables_email
-from bs4 import BeautifulSoup
+from email.mime.text import MIMEText
+from datetime import datetime
 import google.auth.exceptions
+from bs4 import BeautifulSoup
 import pandas as pd
 import requests
 import logging
@@ -159,7 +157,7 @@ def handler_sheets(command, sheet_id, credentials, values_csirt=None):
                 sheet.batchUpdate(spreadsheetId=sheet_id, body={'requests': format_requests}).execute()
             print(f"Datos insertados correctamente.\n{(result.get('updates').get('updatedCells'))}")
 
-"""
+
 def search_csirt(list_csirt, gui, responsable='', ticket=''):
     max_attempts = 5
     url = "https://www.csirt.gob.cl/"
@@ -185,73 +183,22 @@ def search_csirt(list_csirt, gui, responsable='', ticket=''):
             continue
 
         soup = BeautifulSoup(data.text, 'html.parser')
-        for i in soup.find_all('div', {'class': 'card card-category mb-3'}):
-            link = i.find('a', href=True)['href'].replace("/alertas", "").upper()
-            #link = re.search(r'(/\d\w{3}\d{2}-\d+-\d{2})', link).group(1)
-            date = convert_date(i.find('small', {'class': 'text-muted'}).getText().replace("Publicado ", ""))
-            if link.replace("/", "") in list_csirt.values():
-                filter_csirt.append(re.search(r'(\d\w{3})', link).group(0))
-            elif re.search(r'(\d\w{3})', link).group(0) in filter_csirt:
-                continue
-            else:
-                print(link.replace("/", ""))
-                dict_temp = {
-                    'name': link.replace("/", ""),
-                    'revision': re.search(r'\b\d{2}\b', link.replace("/", ""),).group(),
-                    'responsible': responsable,
-                    'date': date,
-                    'Ticket': f"Ticket padre {ticket}",
-                    'Gestionado': ""
-                }
-                try:
-                    url_list[re.search(r'(\d\w{3})', link).group(0)].append(dict_temp),
-                    url_list[re.search(r'(\d\w{3})', link).group(0)] = sorted(url_list[re.search(
-                        r'(\d\w{3})', link).group(0)], key=lambda d: d['name'])
-                except KeyError:
-                    pass
-
-    return url_list
-"""
-def search_csirt(list_csirt, gui, responsable='', ticket=''):
-    max_attempts = 5
-    url = "https://www.csirt.gob.cl/"
-    url_list = {'8FPH': [], '2CMV': [], '8FFR': [], '4IIV': [], '4IIA': []}
-    filter_csirt = []
-    for page in range(1, 10):
-        attempts = 1
-        while attempts <= max_attempts:
-            try:
-                data = requests.get(url+"alertas/"+"?p="+str(page))
-                data.raise_for_status()
-                break
-            except requests.exceptions.ConnectionError as e:
-                print(f"Error al obtener la página {page}: {e}")
-                gui.update_text("error", f"Error al obtener la página {page}: {e}")
-                print(f"Intento {attempts}/{max_attempts}. Esperando 10 segundos antes de volver a intentar...")
-                time.sleep(10)  # Esperar 10 segundos antes de intentar nuevamente
-                attempts += 1
-        else:
-            # Si se alcanza el máximo de intentos sin éxito, mostrar un mensaje y continuar con la siguiente página
-            gui.update_text("error", f"No se pudo obtener la página {page} después de {max_attempts} intentos. Pasando a la siguiente página...")
-            print(f"No se pudo obtener la página {page} después de {max_attempts} intentos. Pasando a la siguiente página...")
-            continue
-
-        soup = BeautifulSoup(data.text, 'html.parser')
-        for i in soup.find_all('div', {'class': 'bg-gradient-to-r to-slate-100 from-white border-gray-200 print:shadow-none shadow-md rounded-lg mb-4'}):
+        for i in soup.find_all('div', {'class': 'bg-gradient-to-r to-slate-100 from-white border-gray-200 print:shadow-none shadow-md rounded-lg'}):
             try:
                 link = i.find('a', href=True)['href'].replace("/alertas", "").upper()
                 link = re.search(r'(\d?\w{3}\d{2}-\d+(?:-\d{2})?)', link).group(1)
                 date = convert_date(i.find('time', class_='text-md text-gray-400 mb-5').get_text().replace(" ", ""))
-                #if link.replace("/", "") in list_csirt.values():
+
                 if any(link.lower() in value.lower() for value in list_csirt.values()):
                     filter_csirt.append(re.search(r'(?:(?<=\b)\d{1})?(\w{3})(?=\d{2})', link).group(1))
-                elif re.search(r'(?:(?<=\b)\d{1})?(\w{3})(?=\d{2})', link).group(1) in filter_csirt:
+                elif re.search(r'(?:(?<=\b)\d)?(\w{3})(?=\d{2})', link).group(1) in filter_csirt:
                     continue
                 else:
                     try:
-                        revision = re.search(r'\b\d{2}\b', link.replace("/", ""),).group()
-                    except:
+                        revision = re.search(r'\b\d{2}\b', link.replace("/", "")).group()
+                    except AttributeError as e:
                         revision = "0"
+
                     dict_temp = {
                         'name': link.replace("/", ""),
                         'revision': revision,
@@ -261,14 +208,11 @@ def search_csirt(list_csirt, gui, responsable='', ticket=''):
                         'Gestionado': ""
                     }
                     try:
-                        key = re.search(r'(?:(?<=\b)\d{1})?(\w{3})(?=\d{2})', link).group(1)
+                        key = re.search(r'(?:(?<=\b)\d)?(\w{3})(?=\d{2})', link).group(1)
                         for clave in url_list.keys():
                             if key in clave:
                                 url_list[clave].append(dict_temp),
                                 url_list[clave] = sorted(url_list[clave], key=lambda d: d['name'])
-                        #url_list[re.search(r'(?:(?<=\b)\d{1})?(\w{3})(?=\d{2})', link).group(1)].append(dict_temp),
-                        #url_list[re.search(r'(?:(?<=\b)\d{1})?(\w{3})(?=\d{2})', link).group(1)] = sorted(url_list[re.search(
-                        #    r'(?:(?<=\b)\d{1})?(\w{3})(?=\d{2})', link).group(1)], key=lambda d: d['name'])
                     except KeyError:
                         pass
             except AttributeError:
@@ -276,23 +220,12 @@ def search_csirt(list_csirt, gui, responsable='', ticket=''):
 
     return url_list
 
-"""
-def convert_date(date):
-    locale.setlocale(locale.LC_TIME, 'es_ES.utf-8')
-    try:
-        setting_date = date.lower().replace(",", "")
-        date_datetime = datetime.strptime(setting_date, "%d %B %Y")
-        format_date = date_datetime.strftime("%d/%m/%Y")
-        return format_date
-    except ValueError:
-        return None
 
-"""
 def convert_date(date):
     locale.setlocale(locale.LC_TIME, 'es_ES.utf-8')
     try:
         date_parts = date.split("alas")
-        date_parts = date_parts[0].replace(" ","").replace(chr(10), "")
+        date_parts = date_parts[0].replace(" ", "").replace(chr(10), "")
         setting_date = date_parts.lower().split("de")
         setting_date = " ".join(setting_date)
         date_datetime = datetime.strptime(setting_date, "%d %B %Y")
@@ -300,6 +233,7 @@ def convert_date(date):
         return format_date
     except ValueError:
         return None
+
 
 def get_ioc(dict_csirt, gui):
     for keywords, values in dict_csirt.items():
@@ -321,8 +255,7 @@ def download_ioc(name_csirt, gui):
             char_code = int(cfemail[i:i+2], 16) ^ key
             email += chr(char_code)
         return email
-        
-    flag_smtp = False
+
     url = "https://www.csirt.gob.cl/alertas/"
     dict_ioc = creater_dict_csirt()
     max_attempts = 5
@@ -392,36 +325,7 @@ def download_ioc(name_csirt, gui):
 
     new_dict_ioc = {k: v for k, v in dict_ioc.items() if [item for item in v if item != "[]"]}
     return new_dict_ioc
-    """
-    soup = BeautifulSoup(data.text, 'html.parser')
-    html_text = soup.find_all('div', {'class': 'col-md-9 mt-3'})
-    for html in html_text:
-        for ioc in html.find_all('td'):
-            value = ioc.text
-            if re.search(reg_url, value):
-                dict_ioc['url'].append(value)
-            elif re.search(reg_ip, value):
-                if flag_smtp:
-                    dict_ioc['smtp'].append(value)
-                else:
-                    dict_ioc['ips'].append(value)
-            elif re.match(reg_correo, value):
-                dict_ioc['correo'].append(value)
-            #elif re.search(reg_dominio, value):
-                #dict_ioc['dominio'].append(value)
-            elif re.search(reg_md5, value):
-                dict_ioc['md5'].append(value)
-            elif re.search(reg_sha1, value):
-                dict_ioc['sha1'].append(value)
-            elif re.search(reg_sha2, value):
-                dict_ioc['sha2'].append(value)
-            elif "SMTP" in value:
-                dict_ioc['smtp'].append(dict_ioc['ips'].pop())
-                flag_smtp = True
 
-    new_dict_ioc = {k: v for k, v in dict_ioc.items() if [item for item in v if item != "[]"]}
-    return new_dict_ioc
-    """
 
 def creater_dict_csirt():
     dict_csirt = {
@@ -507,13 +411,9 @@ def load_ioc_csirt(credentials, spreadsheet_id, data):
     return Modules.handler_variables_email.style_html + html_table
 
 
-def get_alert_csirt_lastweek(data_csirt):
+def get_alert_csirt_lastweek(data_csirt, first_day_lastweek, last_day_lastweek):
     alert_csirt_last_week = []
     try:
-        # Obtener la fecha de inicio y fin de la semana pasada
-        today = datetime.now()
-        first_day_lastweek = today - timedelta(days=today.weekday() + 8)
-        last_day_lastweek = first_day_lastweek + timedelta(days=7)
 
         for values_csirt in reversed(data_csirt['values']):
             target_date = datetime.strptime(values_csirt[3], "%d/%m/%Y")

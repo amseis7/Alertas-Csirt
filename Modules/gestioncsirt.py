@@ -1,15 +1,13 @@
 from google_auth_oauthlib.flow import InstalledAppFlow
+import Modules.handler_funtions as handler_funtions
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-import Modules.handler_funtions as handler_funtions
+from datetime import datetime, timedelta
 import Modules.handler_variables_email
 import google.auth.exceptions
 import threading
 import httplib2
-import time
-import sys
-import os
 
 
 class GestionIoc(threading.Thread):
@@ -101,15 +99,26 @@ class GestionIoc(threading.Thread):
         res = sheet.get(spreadsheetId=self.sheet_id).execute()
         sheets_name = [x.get('properties').get('title') for x in res.get("sheets", [])]
 
+        # Obtener la fecha de inicio y fin de la semana pasada
+        today = datetime.now()
+        first_day_lastweek = today - timedelta(days=today.weekday() + 8)
+        last_day_lastweek = first_day_lastweek + timedelta(days=7)
+
         for sheet_name in sheets_name:
             data = sheet.values().get(spreadsheetId=self.sheet_id, range=sheet_name).execute()
-            result = handler_funtions.get_alert_csirt_lastweek(data)
+            result = handler_funtions.get_alert_csirt_lastweek(data, first_day_lastweek, last_day_lastweek)
             if result:
                 alert_csirt_last_week[sheet_name] = result
-
+        first_day_lastweek += timedelta(days=1)
         html_email = handler_funtions.get_html_report(alert_csirt_last_week)
         handler_funtions.send_reply(self.creds, sender_to=email_info['sender_email'],
-                                    reply_subject=f"Re: {email_info['subject']}",
+                                    reply_subject=f'Re: {email_info["subject"].split(" ")[0]} '
+                                                  f'REPORTE SEGURIDAD SEMANA '
+                                                  f'{first_day_lastweek.day}-'
+                                                  f'{str(first_day_lastweek.month).zfill(2)}-'
+                                                  f'{first_day_lastweek.year} al {last_day_lastweek.day}-'
+                                                  f'{str(last_day_lastweek.month).zfill(2)}-'
+                                                  f'{last_day_lastweek.year}',
                                     reply_body=f"{Modules.handler_variables_email.body_send_report}<br>"
                                                f"{html_email}<br>{Modules.handler_variables_email.body_link_sheet}"
                                                f"{self.sheet_url}")
@@ -147,7 +156,6 @@ class GestionIoc(threading.Thread):
             self.gui.update_text("info", f"No hay correos nuevos que gestionar, se volverá a revisar en {self.time_wait} seg.")
             print(f"No hay correos nuevos que gestionar, se volverá a revisar en {self.time_wait} seg.")
 
-
     def authentication_gmail(self, token_file='Keys\\token.json', key_file=''):
         scopes = [
             'https://www.googleapis.com/auth/drive.metadata.readonly',
@@ -157,8 +165,6 @@ class GestionIoc(threading.Thread):
             'https://www.googleapis.com/auth/gmail.readonly',
             'https://www.googleapis.com/auth/gmail.modify'
         ]
-
-        credentials = None
 
         try:
             # Intentar cargar las credenciales desde el archivo
