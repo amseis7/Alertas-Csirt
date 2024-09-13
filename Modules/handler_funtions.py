@@ -183,40 +183,40 @@ def search_csirt(list_csirt, gui, responsable='', ticket=''):
             continue
 
         soup = BeautifulSoup(data.text, 'html.parser')
-        for i in soup.find_all('div', {'class': 'bg-gradient-to-r to-slate-100 from-white border-gray-200 print:shadow-none shadow-md rounded-lg'}):
-            try:
-                link = i.find('a', href=True)['href'].replace("/alertas", "").upper()
-                link = re.search(r'(\d?\w{3}\d{2}-\d+(?:-\d{2})?)', link).group(1)
-                date = convert_date(i.find('time', class_='text-md text-gray-400 mb-5').get_text().replace(" ", ""))
+        for i in soup.find_all('a', href=lambda x: x and x.startswith('/alertas/')):
+            if not i.find('picture'):
+                try:
+                    link = i.find('h3').get_text().upper()
+                    date = convert_date(i.find('time').get_text().replace(" ", ""))
 
-                if any(link.lower() in value.lower() for value in list_csirt.values()):
-                    filter_csirt.append(re.search(r'(?:(?<=\b)\d{1})?(\w{3})(?=\d{2})', link).group(1))
-                elif re.search(r'(?:(?<=\b)\d)?(\w{3})(?=\d{2})', link).group(1) in filter_csirt:
-                    continue
-                else:
-                    try:
-                        revision = re.search(r'\b\d{2}\b', link.replace("/", "")).group()
-                    except AttributeError as e:
-                        revision = "0"
+                    if any(link.lower() in value.lower() for value in list_csirt.values()):
+                        filter_csirt.append(re.search(r'(?:(?<=\b)\d{1})?(\w{3})(?=\d{2})', link).group(1))
+                    elif re.search(r'(?:(?<=\b)\d)?(\w{3})(?=\d{2})', link).group(1) in filter_csirt:
+                        continue
+                    else:
+                        try:
+                            revision = re.search(r'\b\d{2}\b', link.replace("/", "")).group()
+                        except AttributeError as e:
+                            revision = "0"
 
-                    dict_temp = {
-                        'name': link.replace("/", ""),
-                        'revision': revision,
-                        'responsible': responsable,
-                        'date': date,
-                        'Ticket': f"Ticket padre {ticket}",
-                        'Gestionado': ""
-                    }
-                    try:
-                        key = re.search(r'(?:(?<=\b)\d)?(\w{3})(?=\d{2})', link).group(1)
-                        for clave in url_list.keys():
-                            if key in clave:
-                                url_list[clave].append(dict_temp),
-                                url_list[clave] = sorted(url_list[clave], key=lambda d: d['name'])
-                    except KeyError:
-                        pass
-            except AttributeError:
-                pass
+                        dict_temp = {
+                            'name': link.replace("/", ""),
+                            'revision': revision,
+                            'responsible': responsable,
+                            'date': date,
+                            'Ticket': f"Ticket padre {ticket}",
+                            'Gestionado': ""
+                        }
+                        try:
+                            key = re.search(r'(?:(?<=\b)\d)?(\w{3})(?=\d{2})', link).group(1)
+                            for clave in url_list.keys():
+                                if key in clave:
+                                    url_list[clave].append(dict_temp),
+                                    url_list[clave] = sorted(url_list[clave], key=lambda d: d['name'])
+                        except KeyError:
+                            pass
+                except AttributeError:
+                    pass
 
     return url_list
 
@@ -280,7 +280,7 @@ def download_ioc(name_csirt, gui):
     soup = BeautifulSoup(data.text, 'html.parser')
 
     # Encontrar la tabla
-    tabla = soup.find('table', class_='border-collapse')
+    tabla = soup.find('table')
 
     # Inicializar una lista para almacenar los datos de la tabla
     datos_tabla = []
