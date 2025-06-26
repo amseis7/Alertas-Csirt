@@ -43,9 +43,24 @@ def crear_configuracion(root_path, config_cfg):
                 else:
                     print("Todos los campos son obligatorios. Por favor, ingrese la información solicitada.")
 
+            csirt_mapping = {
+                "8FPH": "Phishing",
+                "2CMV": "Malware",
+                "8FFR": "Sitios Fraudulentos",
+                "4IIA": "Ataques de Fuerza Bruta",
+                "4IIV": "Ataques de Fuerza Bruta",
+                "ACF": "Campaña Fraudulenta",
+                "AIA": "Investigacion de Amenazas"
+            }
+
             config_cfg['credentials'] = {'path_key': credentials_name}
-            config_cfg['configurations'] = {'domain': domain, 'time_wait': time_wait, 'folder_name': folder_name,
-                                            'sheet_name': sheet_name, 'folder_id': "", 'sheet_id': ""}
+            config_cfg['configurations'] = {'domain': domain,
+                                            'time_wait': time_wait,
+                                            'folder_name': folder_name,
+                                            'sheet_name': sheet_name,
+                                            'folder_id': "",
+                                            'sheet_id': "",
+                                            'csirt_names': json.dumps(csirt_mapping, ensure_ascii=False)}
 
             with open(ruta_archivo_cfg, "w") as configfile:
                 config_cfg.write(configfile)
@@ -444,15 +459,11 @@ def format_sheets_csirt(sheet_id, values):
     return merge_and_format_requests
 
 
-def prueba_google_sheet(sheet_name, creds):
+def prueba_google_sheet(sheet_name, dict_csirt_name, creds):
     spreadsheet_body = {
         'properties': {'title': sheet_name},
         'sheets': [
-            {'properties': {'title': '8FPH'}},
-            {'properties': {'title': '2CMV'}},
-            {'properties': {'title': '8FFR'}},
-            {'properties': {'title': '4IIA'}},
-            {'properties': {'title': '4IIV'}},
+            {'properties': {'title': name}} for name in dict_csirt_name.keys()
         ]
     }
 
@@ -470,14 +481,7 @@ def prueba_google_sheet(sheet_name, creds):
         spreadsheet = service_sheet.spreadsheets().create(body=spreadsheet_body).execute()
         sheet_id = spreadsheet['spreadsheetId']
         for sheets in spreadsheet['sheets']:
-            if sheets['properties'].get('title') == '8FPH':
-                values = 'Phishing'
-            elif sheets['properties'].get('title') == '2CMV':
-                values = 'Malware'
-            elif sheets['properties'].get('title') == '8FFR':
-                values = 'Sitios Fraudulentos'
-            elif sheets['properties'].get('title') == '4IIA' or sheets['properties'].get('title') == '4IIV':
-                values = 'Ataques de Fuerza Bruta'
+            values = dict_csirt_name[sheets['properties'].get('title')]
             merge_and_format_requests = format_sheets_csirt(sheets['properties'].get('sheetId'), values)
             response = service_sheet.spreadsheets().batchUpdate(spreadsheetId=sheet_id,
                                                                 body={'requests': merge_and_format_requests}).execute()
@@ -560,7 +564,9 @@ try:
 
     # Prueba de permisos Google Sheet y creacion de planilla compartida
     print("Probando acceso a Sheet Google API y creacion de planilla con alertas CSIRT")
-    data_sheet = prueba_google_sheet(sheet_name, creds)
+    #Obtener codigo de eventos y nombre de csirt
+    dict_csirt_name = json.loads(config['configurations']['csirt_names'])
+    data_sheet = prueba_google_sheet(sheet_name, dict_csirt_name, creds)
     config.set('configurations', 'sheet_id', data_sheet['sheet_id'])
     # config['configurations']['sheet_id'] = data_sheet['sheet_id']
     config.set('configurations', 'sheet_url', data_sheet['sheet_url'])
