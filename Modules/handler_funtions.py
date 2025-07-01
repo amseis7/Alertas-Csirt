@@ -158,10 +158,12 @@ def handler_sheets(command, sheet_id, credentials, values_csirt=None):
             print(f"Datos insertados correctamente.\n{(result.get('updates').get('updatedCells'))}")
 
 
-def search_csirt(list_csirt, gui, responsable='', ticket=''):
+def search_csirt(list_csirt, gui, csirt_name, responsable='', ticket=''):
     max_attempts = 5
     url = "https://www.csirt.gob.cl/"
-    url_list = {'8FPH': [], '2CMV': [], '8FFR': [], '4IIV': [], '4IIA': []}
+
+    url_list = {i: [] for i in csirt_name}
+    #url_list = {'8FPH': [], '2CMV': [], '8FFR': [], '4IIVº': [], '4IIA': []}
     filter_csirt = []
     for page in range(1, 10):
         attempts = 1

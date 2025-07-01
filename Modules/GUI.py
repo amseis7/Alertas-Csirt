@@ -43,25 +43,56 @@ class ConfiguracionVentana(tk.Toplevel):
 
         # Etiqueta y entrada para el nombre de la carpeta
         tk.Label(self, text="Nombre de la carpeta:").grid(sticky='w', row=3, column=0, padx=10, pady=5)
-        self.folder_name_entry = tk.Entry(self)
-        self.folder_name_entry.insert(0, self.configuracion.get('configurations', 'folder_name'))
+        self.folder_var = tk.StringVar()
+        self.folder_var.set(self.configuracion.get('configurations', 'folder_name'))
+        self.folder_var.trace_add("write", lambda *args: self.set_folder_changed())
+        self.folder_name_entry = tk.Entry(self, textvariable=self.folder_var)
         self.folder_name_entry.grid(sticky='ew', row=3, column=1, padx=10, pady=5)
 
         # Etiqueta y entrada para el nombre de la hoja
         tk.Label(self, text="Nombre de la hoja:").grid(sticky='w', row=4, column=0, padx=10, pady=5)
-        self.sheet_name_entry = tk.Entry(self)
-        self.sheet_name_entry.insert(0, self.configuracion.get('configurations', 'sheet_name'))
+        self.sheet_var = tk.StringVar()
+        self.sheet_var.set(self.configuracion.get('configurations', 'sheet_name'))
+        self.sheet_var.trace_add("write", lambda *args: self.set_sheet_changed())
+        self.sheet_name_entry = tk.Entry(self, textvariable=self.sheet_var)
         self.sheet_name_entry.grid(sticky='ew', row=4, column=1, padx=10, pady=5)
 
+        #Etiqueta y entrada para nombres de los codigos csirt
+        self.labelFrame_csirt_name = ttk.LabelFrame(self, text="Categorias CSIRT:")
+        self.labelFrame_csirt_name.grid(sticky='ew', row=5, column=0, columnspan=3, padx=10, pady=5)
+        # Canvas + Scrollbar
+        self.canvas_csirt = tk.Canvas(self.labelFrame_csirt_name, height=150)
+        scrollbar = ttk.Scrollbar(self.labelFrame_csirt_name, orient="vertical", command=self.canvas_csirt.yview)
+        self.scrollable_frame_csirt = tk.Frame(self.canvas_csirt)
+
+        self.scrollable_frame_csirt.bind(
+            "<Configure>",
+            lambda e: self.canvas_csirt.configure(scrollregion=self.canvas_csirt.bbox("all"))
+        )
+
+        self.canvas_csirt.create_window((0, 0), window=self.scrollable_frame_csirt, anchor="nw")
+        self.canvas_csirt.configure(yscrollcommand=scrollbar.set)
+        self.bind_mousewheel_to_canvas(self.canvas_csirt)
+
+        self.canvas_csirt.grid(row=0, column=0, sticky='nsew')
+        scrollbar.grid(row=0, column=1, sticky='ns')
+
+        self.csirt_entries = {}
+        import json
+        self.csirt_dict = json.loads(self.configuracion.get('configurations', 'csirt_names'))
+        self.row_csirt = 0
+        self.agregar_campos_csirt_iniciales()
+        tk.Button(self.labelFrame_csirt_name, text="+ Agregar categoría", command=self.agregar_campo_csirt).grid(row=8, column=0, columnspan=2, pady=5)
+
         # Botón para guardar la configuración
-        ttk.Button(self, text="Guardar", command=self.guardar_configuracion).grid(row=5, column=0, pady=10, padx=25)
-        ttk.Button(self, text="Cancelar", command=self.cancelar_configuracion).grid(row=5, column=1, pady=10, padx=25)
+        ttk.Button(self, text="Guardar", command=self.guardar_configuracion).grid(row=7, column=0, pady=10, padx=25)
+        ttk.Button(self, text="Cancelar", command=self.cancelar_configuracion).grid(row=7, column=1, pady=10, padx=25)
 
         # Logica de validacion bind en entry
         self.domain_entry.bind("<FocusOut>", self.validate_entry_out)
         self.time_wait_entry.bind("<FocusOut>", self.validate_entry_out)
-        self.folder_name_entry.bind("<FocusOut>", self.validate_entry_out)
-        self.sheet_name_entry.bind("<FocusOut>", self.validate_entry_out)
+        #self.folder_name_entry.bind("<FocusOut>", self.validate_entry_out)
+        #self.sheet_name_entry.bind("<FocusOut>", self.validate_entry_out)
         self.domain_entry.bind("<FocusIn>", self.validate_entry_in)
         self.time_wait_entry.bind("<FocusIn>", self.validate_entry_in)
         self.folder_name_entry.bind("<FocusIn>", self.validate_entry_in)
@@ -70,17 +101,72 @@ class ConfiguracionVentana(tk.Toplevel):
         self.attributes('-topmost', 1)
         self.protocol("WM_DELETE_WINDOW", self.cerrar_ventana)
 
+    def bind_mousewheel_to_canvas(self, canvas):
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _on_mousewheel_linux(event):  # Para sistemas X11 (Linux)
+            canvas.yview_scroll(-1 if event.num == 4 else 1, "units")
+
+        if self.tk.call("tk", "windowingsystem") == "win32":
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        elif self.tk.call("tk", "windowingsystem") == "aqua":  # macOS
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        else:  # Linux (usa <Button-4> y <Button-5>)
+            canvas.bind_all("<Button-4>", _on_mousewheel_linux)
+            canvas.bind_all("<Button-5>", _on_mousewheel_linux)
+
+    def agregar_campos_csirt_iniciales(self):
+        for key, values in self.csirt_dict.items():
+            self.agregar_campo_csirt(key, values)
+
+    def agregar_campo_csirt(self, key="", value=""):
+        key_var = tk.StringVar(value=key)
+        value_var = tk.StringVar(value=value)
+
+        key_entry = tk.Entry(self.scrollable_frame_csirt, textvariable=key_var, width=7)
+        key_entry.grid(row=self.row_csirt, column=0, padx=5, pady=2)
+
+        value_entry = tk.Entry(self.scrollable_frame_csirt, textvariable=value_var, width=30)
+        value_entry.grid(row=self.row_csirt, column=1, padx=5, pady=2)
+
+        delete_button = tk.Button(
+            self.scrollable_frame_csirt,
+            text="❌",
+            command=lambda r=self.row_csirt: self.eliminar_campo_csirt(r),
+            relief="flat",
+            fg="red"
+        )
+
+        delete_button.grid(row=self.row_csirt, column=2, padx=5, pady=2)
+
+        self.csirt_entries[self.row_csirt] = {
+            'key_var': key_var,
+            'value_var': value_var,
+            'widgets': [key_entry, value_entry, delete_button]
+        }
+        self.row_csirt += 1
+
+
+    def eliminar_campo_csirt(self, row_id):
+        entry_data = self.csirt_entries.pop(row_id, None)
+        if entry_data:
+            for widget in entry_data['widgets']:
+                widget.destroy()
+
     def cerrar_ventana(self):
         self.attributes('-topmost', 0)  # Restablecer el valor para permitir que la ventana principal quede por encima
         self.destroy()
 
     def guardar_configuracion(self):
         # try:
+        import json
+
         if self.change_name_folder:
-            self.change_name_file_folder(self.folder_name_entry.get(),
+            self.change_name_file_folder(self.folder_var.get(),
                                          self.configuracion.get('configurations', 'folder_id'))
         if self.change_name_sheet:
-            self.change_name_file_folder(self.sheet_name_entry.get(),
+            self.change_name_file_folder(self.sheet_var.get(),
                                          self.configuracion.get('configurations', 'sheet_id'))
 
         # Guarda los cambios en la configuración
@@ -89,6 +175,17 @@ class ConfiguracionVentana(tk.Toplevel):
         self.configuracion.set('configurations', 'time_wait', self.time_wait_entry.get())
         self.configuracion.set('configurations', 'folder_name', self.folder_name_entry.get())
         self.configuracion.set('configurations', 'sheet_name', self.sheet_name_entry.get())
+
+        # === Armar nuevo diccionario csirt_names ===
+        nuevo_csirt = {}
+        for entry in self.csirt_entries.values():
+            key = entry['key_var'].get().strip()
+            value = entry['value_var'].get().strip()
+            if key and value:
+                nuevo_csirt[key] = value
+
+        # Guardar diccionario como string JSON en el archivo cfg
+        self.configuracion.set('configurations', 'csirt_names', json.dumps(nuevo_csirt, ensure_ascii=False))
 
         # Guarda la configuración en el archivo
         with open('Config\\configuration.cfg', 'w') as config_file:
@@ -126,10 +223,14 @@ class ConfiguracionVentana(tk.Toplevel):
             if int(event.widget.get()) > 9999:
                 self.time_wait_entry.delete(0, tk.END)
                 self.time_wait_entry.insert(0, "9999")
-        if event.widget.winfo_name() == "!entry3":
-            self.change_name_folder = True
-        if event.widget.winfo_name() == "!entry4":
-            self.change_name_sheet = True
+
+    def set_folder_changed(self):
+        self.change_name_folder = True
+        print("Cambio en el nombre de carpeta: ", self.folder_var.get())
+
+    def set_sheet_changed(self):
+        self.change_name_sheet = True
+        print("Cambio en el nombre de hoja: ", self.sheet_var.get())
 
     def validate_entry_in(self, event):
         self.copy_entry = event.widget.get()
@@ -139,6 +240,7 @@ class ConfiguracionVentana(tk.Toplevel):
         drive_service = build('drive', 'v3', credentials=creds)
         folder = drive_service.files().get(fileId=fileid).execute()
         updated_folder = drive_service.files().update(fileId=fileid, body={'name': name}).execute()
+        print(updated_folder)
 
 
 class MiApp:

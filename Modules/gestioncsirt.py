@@ -8,6 +8,7 @@ import Modules.handler_variables_email
 import google.auth.exceptions
 import threading
 import httplib2
+import json
 
 
 class GestionIoc(threading.Thread):
@@ -24,6 +25,7 @@ class GestionIoc(threading.Thread):
         self.folder_id = configuration.get('configurations', 'folder_id')
         self.sheet_url = configuration.get('configurations', 'sheet_url')
         self.url_folder = configuration.get('configurations', 'url_folder')
+        self.csirt_name = json.loads(configuration['configurations']['csirt_names'])
         self.creds = self.authentication_gmail(key_file=self.key)
 
     def stop(self):
@@ -59,7 +61,7 @@ class GestionIoc(threading.Thread):
         self.gui.update_text("info", "Obteniendo ultimos CSIRT desde el google drive")
         last_csirt_in_sheets = handler_funtions.handler_sheets("get", self.sheet_id, credentials=self.creds)
         print(last_csirt_in_sheets)
-        last_csirt_in_web = handler_funtions.search_csirt(last_csirt_in_sheets, self.gui, responsable=email_info['sender_name'],
+        last_csirt_in_web = handler_funtions.search_csirt(last_csirt_in_sheets, self.gui, self.csirt_name, responsable=email_info['sender_name'],
                                                           ticket=email_info['ticket_action'][0])
         print(last_csirt_in_web)
         if not all(not details for details in last_csirt_in_web.values()):
