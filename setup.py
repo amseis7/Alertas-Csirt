@@ -1,3 +1,4 @@
+import Modules.handler_variables_email as handler_variables_email
 import subprocess
 import configparser
 import shutil
@@ -482,7 +483,7 @@ def prueba_google_sheet(sheet_name, dict_csirt_name, creds):
         sheet_id = spreadsheet['spreadsheetId']
         for sheets in spreadsheet['sheets']:
             values = dict_csirt_name[sheets['properties'].get('title')]
-            merge_and_format_requests = format_sheets_csirt(sheets['properties'].get('sheetId'), values)
+            merge_and_format_requests = handler_variables_email.format_sheets_csirt(sheets['properties'].get('sheetId'), values)
             response = service_sheet.spreadsheets().batchUpdate(spreadsheetId=sheet_id,
                                                                 body={'requests': merge_and_format_requests}).execute()
         print(

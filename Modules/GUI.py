@@ -1,4 +1,5 @@
 from Modules.handler_funtions import authentication_gmail
+from Modules.handler_variables_email import format_sheets_csirt
 from Modules.gestioncsirt import GestionIoc
 from googleapiclient.discovery import build
 from tkinter import messagebox
@@ -57,7 +58,7 @@ class ConfiguracionVentana(tk.Toplevel):
         self.sheet_name_entry = tk.Entry(self, textvariable=self.sheet_var)
         self.sheet_name_entry.grid(sticky='ew', row=4, column=1, padx=10, pady=5)
 
-        #Etiqueta y entrada para nombres de los codigos csirt
+        # Etiqueta y entrada para nombres de los codigos csirt
         self.labelFrame_csirt_name = ttk.LabelFrame(self, text="Categorias CSIRT:")
         self.labelFrame_csirt_name.grid(sticky='ew', row=5, column=0, columnspan=3, padx=10, pady=5)
         # Canvas + Scrollbar
@@ -91,8 +92,6 @@ class ConfiguracionVentana(tk.Toplevel):
         # Logica de validacion bind en entry
         self.domain_entry.bind("<FocusOut>", self.validate_entry_out)
         self.time_wait_entry.bind("<FocusOut>", self.validate_entry_out)
-        #self.folder_name_entry.bind("<FocusOut>", self.validate_entry_out)
-        #self.sheet_name_entry.bind("<FocusOut>", self.validate_entry_out)
         self.domain_entry.bind("<FocusIn>", self.validate_entry_in)
         self.time_wait_entry.bind("<FocusIn>", self.validate_entry_in)
         self.folder_name_entry.bind("<FocusIn>", self.validate_entry_in)
@@ -147,7 +146,6 @@ class ConfiguracionVentana(tk.Toplevel):
         }
         self.row_csirt += 1
 
-
     def eliminar_campo_csirt(self, row_id):
         entry_data = self.csirt_entries.pop(row_id, None)
         if entry_data:
@@ -177,15 +175,22 @@ class ConfiguracionVentana(tk.Toplevel):
         self.configuracion.set('configurations', 'sheet_name', self.sheet_name_entry.get())
 
         # === Armar nuevo diccionario csirt_names ===
-        nuevo_csirt = {}
+        nuevo_csirt = dict()
         for entry in self.csirt_entries.values():
             key = entry['key_var'].get().strip()
             value = entry['value_var'].get().strip()
             if key and value:
                 nuevo_csirt[key] = value
+        print(nuevo_csirt.keys())
+        if set(self.csirt_dict.keys()) == set(nuevo_csirt.keys()):
+            print("Las claves son iguales")
+        else:
+            print("Las claves son diferentes")
+            sheet_id = self.configuracion.get('configurations', 'sheet_id')
+            self.sincronizar_hojas(self.csirt_dict, nuevo_csirt, sheet_id)
+            # Guardar diccionario como string JSON en el archivo cfg
+            self.configuracion.set('configurations', 'csirt_names', json.dumps(nuevo_csirt, ensure_ascii=False))
 
-        # Guardar diccionario como string JSON en el archivo cfg
-        self.configuracion.set('configurations', 'csirt_names', json.dumps(nuevo_csirt, ensure_ascii=False))
 
         # Guarda la configuración en el archivo
         with open('Config\\configuration.cfg', 'w') as config_file:
@@ -196,6 +201,69 @@ class ConfiguracionVentana(tk.Toplevel):
 
         # except Exception as e:
         #    print(e)
+
+    def sincronizar_hojas(self, old_csirt, new_csirt, sheet_id):
+        hojas_actuales = self.obtener_nombres_hojas(sheet_id)
+
+        claves_antiguas = set(old_csirt.keys())
+        claves_nuevas = set(new_csirt.keys())
+
+        claves_eliminadas = claves_antiguas - claves_nuevas
+        claves_agregadas = claves_nuevas - claves_antiguas
+
+        # === Eliminar hojas ===
+        requests_eliminar = []
+        for clave in claves_eliminadas:
+            if clave in hojas_actuales:
+                sheet_id_to_delete = hojas_actuales[clave]
+                requests_eliminar.append({'deleteSheet': {'sheetId': sheet_id_to_delete}})
+
+        creds = authentication_gmail(key_file=self.cred_path.get())
+        sheet_service = build('sheets', 'v4', credentials=creds)
+
+        if requests_eliminar:
+            sheet_service.spreadsheets().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={'requests': requests_eliminar}
+            ).execute()
+            print(f"🗑️ Hojas eliminadas: {', '.join(claves_eliminadas)}")
+
+        # === Agregar hojas con formato ===
+        for clave in claves_agregadas:
+            valor = new_csirt[clave]
+            self.agregar_hoja_y_formato(sheet_service, sheet_id, clave, valor)
+
+    def agregar_hoja_y_formato(self, sheet_service, spreadsheet_id, clave, valor):
+        # Paso 1: Crear hoja
+        add_sheet_body = {
+            'requests': [
+                {'addSheet': {'properties': {'title': clave}}}
+            ]
+        }
+
+        result = sheet_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=add_sheet_body
+        ).execute()
+
+        sheet_id = result['replies'][0]['addSheet']['properties']['sheetId']
+
+        # Paso 2: Aplicar formato con el valor correspondiente
+        format_requests = format_sheets_csirt(sheet_id, valor)
+        sheet_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={'requests': format_requests}
+        ).execute()
+
+        print(f"✅ Hoja '{clave}' creada y formateada.")
+
+    def obtener_nombres_hojas(self, sheet_id):
+        creds = authentication_gmail(key_file=self.cred_path.get())
+        sheet_service = build('sheets', 'v4', credentials=creds)
+
+        sheet_metadata = sheet_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+        sheets = sheet_metadata.get('sheets', [])
+        return {sheet['properties']['title']: sheet['properties']['sheetId'] for sheet in sheets}
 
     def cancelar_configuracion(self):
         if self.is_modify:
@@ -240,7 +308,16 @@ class ConfiguracionVentana(tk.Toplevel):
         drive_service = build('drive', 'v3', credentials=creds)
         folder = drive_service.files().get(fileId=fileid).execute()
         updated_folder = drive_service.files().update(fileId=fileid, body={'name': name}).execute()
-        print(updated_folder)
+
+    def add_sheets_db(self):
+        creds = authentication_gmail(key_file=self.cred_path.get())
+        drive_service = build('sheets', 'v4', credentials=creds)
+
+    def delete_sheets_db(self):
+        creds = authentication_gmail(key_file=self.cred_path.get())
+        service_sheet = build('sheets', 'v4', credentials=creds)
+
+
 
 
 class MiApp:
@@ -282,7 +359,7 @@ class MiApp:
 
         # Botones
         self.btn_iniciar = ttk.Button(labelframe_top, text="Start Service", padding="10 8 10 8",
-                                      command=self.script_paralelo)
+                                      command=self.iniciar_script)
         self.btn_iniciar.pack(side='left', pady=5, padx=50)
 
         self.btn_detener = ttk.Button(labelframe_top, text="Stop Service", padding="10 8 10 8", state="disabled",
@@ -326,10 +403,8 @@ class MiApp:
         self.btn_detener.config(state='disabled')
         self.config_menu.entryconfig("Configuración", state="normal")
 
-
     def script_paralelo(self):
         # Simulación de un script en ejecución
-        wait_time = int(self.configuracion.get('configurations', 'time_wait'))
         self.btn_iniciar.config(state="disabled")
         self.btn_detener.config(state="normal")
         self.config_menu.entryconfig("Configuración", state="disabled")
@@ -343,7 +418,6 @@ class MiApp:
         self.log_text.config(state='normal')
         datetime_current = datetime.datetime.now()
         self.log_text.insert(tk.END, f"{datetime_current.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
-        # self.log_text.insert(tk.END, f"{message}\n")
         self.log_text.yview(tk.END)  # Desplazar la caja de texto para mostrar el último registro
         self.log_text.config(state='disabled')
 
@@ -361,7 +435,6 @@ class MiApp:
         # Esta función utiliza after() para ejecutar la actualización en el hilo principal
         self.root.after(0, self._update_text, level_log, message, is_error)
 
-
     def manager_logging(self):
         # Configuración del logger principal
         self.logger = logging.getLogger('main')
@@ -375,7 +448,6 @@ class MiApp:
         info_handler.setLevel(logging.INFO)
         info_handler.setFormatter(formatter)
         self.logger.addHandler(info_handler)
-
 
     def on_closing(self):
         if self.threading_csirt:
