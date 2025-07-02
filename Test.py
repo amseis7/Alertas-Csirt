@@ -1,161 +1,138 @@
-import configparser
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
-import Modules.handler_funtions as handler_funtions
-import google.auth.exceptions
-import pandas as pd
-import locale
 import os
-import re
-import requests
+import shutil
+import subprocess
+import configparser
 import json
-import time
-from datetime import datetime
 from googleapiclient.discovery import build
-from datetime import datetime, timedelta
 
-from bs4 import BeautifulSoup
-
-
-def authentication_gmail(token_file='Keys\\token.json', key_file=''):
-        scopes = [
-            'https://www.googleapis.com/auth/drive.metadata.readonly',
-            'https://www.googleapis.com/auth/spreadsheets',
-            'https://www.googleapis.com/auth/drive.file',
-            'https://www.googleapis.com/auth/drive',
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/gmail.modify'
-        ]
-
-        try:
-            # Intentar cargar las credenciales desde el archivo
-            credentials = Credentials.from_authorized_user_file(token_file, scopes=scopes)
-
-            # Comprobar si las credenciales han expirado
-            if credentials.expired:
-                # Renovar las credenciales
-                credentials.refresh(Request())
-                # Guardar las nuevas credenciales en el archivo
-                with open(token_file, 'w') as token:
-                    token.write(credentials.to_json())
-
-        except (FileNotFoundError, ValueError, google.auth.exceptions.RefreshError):
-            # Si el archivo no existe o no tiene el formato esperado, iniciar el flujo de autorización
-            print("Se requiere autorización del usuario. Abriendo ventana de autorización...")
-            flow = InstalledAppFlow.from_client_secrets_file(key_file, scopes)
-            credentials = flow.run_local_server(port=0)
-            # Guardar las credenciales en el archivo
-            with open(token_file, 'w') as token:
-                token.write(credentials.to_json())
-            print("Autorización exitosa. Credenciales guardadas.")
-
-        return credentials
+from Modules.handler_funtions import authentication_gmail
+from Modules import handler_variables_email
+from Modules.handler_funtions import prueba_google_drive, get_file_folder_url, check_file_exists
 
 
-def management_report_csirt(creds, sheet_id, csirt_name):
-        alert_csirt_last_week = {}
-        service_drive = build('sheets', 'v4', credentials=creds)
-        sheet = service_drive.spreadsheets()
+def instalar_dependencias(requirements_file):
+    try:
+        subprocess.check_call(["pip", "install", "-r", requirements_file])
+        print("Módulos instalados correctamente.")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Error al instalar dependencias: {e}")
 
-        res = sheet.get(spreadsheetId=sheet_id).execute()
-        sheets_name = [x.get('properties').get('title') for x in res.get("sheets", [])]
+
+def crear_directorios(base_path):
+    for folder in ["Config", "Logs", "Keys"]:
+        os.makedirs(os.path.join(base_path, folder), exist_ok=True)
+        print(f"Carpeta creada o ya existente: {folder}")
 
 
-        # Obtener la fecha de inicio y fin de la semana pasada
-        today = datetime.now()
-        first_day_lastweek = today - timedelta(days=today.weekday() + 8)
-        last_day_lastweek = first_day_lastweek + timedelta(days=7)
+def mover_credenciales(config, base_path):
+    key_path = config.get('credentials', 'path_key')
+    if not os.path.isfile(key_path):
+        raise FileNotFoundError(f"ERROR: No se encontró el archivo '{key_path}'")
 
-        for sheet_name in sheets_name:
-            data = sheet.values().get(spreadsheetId=sheet_id, range=sheet_name).execute()
-            result = handler_funtions.get_alert_csirt_lastweek(data, first_day_lastweek, last_day_lastweek)
-            if result:
-                alert_csirt_last_week[sheet_name] = result
-        first_day_lastweek += timedelta(days=1)
-        html_email = get_html_report(alert_csirt_last_week, csirt_name)
+    file_name = os.path.basename(key_path)
+    dest_path = os.path.join(base_path, "Keys", file_name)
+    shutil.move(key_path, dest_path)
+    config.set('credentials', 'path_key', dest_path)
+    return dest_path
 
-        #return html_email
 
-def get_html_report(data_csirt, csirt_name):
-    count = 1
-    matriz_data = []
-    columns = [
-        'Nº',
-        'Fecha',
-        'Detalle Incidente / Reporte de vulnerabilidades',
-        'Tipo (Phishing, virus, etc.)',
-        'Criticidad (Alta, Media, Baja)',
-        'Canal de información de obtención (Twitter, email, etc.)',
-        'Plan de acción',
-        'Fecha de implementación',
-        'Chequeo post remediación'
-    ]
+def guardar_config(config, ruta_config):
+    with open(ruta_config, 'w') as configfile:
+        config.write(configfile)
 
-    for csirt, values in data_csirt.items():
-        for value in values:
-            data_individual = []
-            data_individual.extend([
-                    count,
-                    value[3],
-                    value[0],
-                    'Fraude Phishing',
-                    'Alta',
-                    'CSIRT',
-                    csirt_name[csirt],
-                    value[3],
-                    'OK'
-                ])
-            """if csirt == '8FPH':
-                data_individual.extend([
-                    count,
-                    value[3],
-                    value[0],
-                    'Fraude Phishing',
-                    'Alta',
-                    'CSIRT',
-                    'Bloqueo URL/SMTP/Filtro contenido',
-                    value[3],
-                    'OK'
-                ])
-            elif csirt == '2CMV':
-                data_individual.extend([
-                    count,
-                    value[3],
-                    value[0],
-                    'Fraude Malware',
-                    'Alta',
-                    'CSIRT',
-                    'Bloqueo URL/Dominio/Hash',
-                    value[3],
-                    'OK'
-                ])
-            elif csirt == '8FFR':
-                data_individual.extend([
-                    count,
-                    value[3],
-                    value[0],
-                    'Fraude Malware',
-                    'Alta',
-                    'CSIRT',
-                    'Bloqueo URL/Dominio',
-                    value[3],
-                    'OK'
-                ])"""
-            matriz_data.append(data_individual)
-            count += 1
-    df = pd.DataFrame(matriz_data, columns=columns)
-    print(df)
-    html = df.to_html(escape=False, classes='table table-hover', border=0,
-                      index=False)  # escape=False para permitir HTML en los datos
 
-configuracion = configparser.ConfigParser()
-configuracion.read('Config\\configuration.cfg')
-csirt_name = json.loads(configuracion['configurations']['csirt_names'])
-sheet_id = configuracion.get('configurations', 'sheet_id')
-key = configuracion.get('credentials', 'path_key')
-creds = authentication_gmail(key_file=key)
+def prueba_google_sheet(sheet_name, dict_csirt_name, creds, config):
+    service_sheet = build('sheets', 'v4', credentials=creds)
+    service_drive = build('drive', 'v3', credentials=creds)
 
-resultado = management_report_csirt(creds, sheet_id, csirt_name)
+    sheet_id = check_file_exists(service_drive, sheet_name, 'application/vnd.google-apps.spreadsheet')
+    spreadsheet_body = {
+        'properties': {'title': sheet_name},
+        'sheets': [{'properties': {'title': name}} for name in dict_csirt_name.keys()]
+    }
 
-print(resultado)
+    if not sheet_id:
+        spreadsheet = service_sheet.spreadsheets().create(body=spreadsheet_body).execute()
+        sheet_id = spreadsheet['spreadsheetId']
+        for sheet in spreadsheet['sheets']:
+            title = sheet['properties']['title']
+            values = dict_csirt_name[title]
+            requests = handler_variables_email.format_sheets_csirt(sheet['properties']['sheetId'], values)
+            service_sheet.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={'requests': requests}).execute()
+        print("Hoja creada y configurada.")
+    else:
+        print("Hoja ya existe.")
+
+    file = service_drive.files().get(fileId=sheet_id, fields="parents").execute()
+    previous_parents = ",".join(file.get("parents"))
+    service_drive.files().update(
+        fileId=sheet_id,
+        addParents=config.get('configurations', 'folder_id'),
+        removeParents=previous_parents,
+        fields="id, parents"
+    ).execute()
+    service_drive.permissions().create(
+        fileId=sheet_id,
+        body={'role': 'reader', 'type': 'anyone', 'allowFileDiscovery': False}
+    ).execute()
+
+    url = get_file_folder_url(service_drive, sheet_id)
+    return {'sheet_id': sheet_id, 'sheet_url': url}
+
+
+def main():
+    print("#" * 55)
+    print("#   Preparación de Servicio Gestión CSIRT en Python   #")
+    print("#" * 55)
+
+    root_path = os.getcwd()
+    requirements_path = os.path.join(root_path, "requeriment.txt")
+    config_path = os.path.join(root_path, "Config", "configuration.cfg")
+    config = configparser.ConfigParser()
+
+    instalar_dependencias(requirements_path)
+    crear_directorios(root_path)
+
+    print("Creando archivo de configuración...")
+    from Modules.handler_funtions import crear_configuracion
+    config_path = crear_configuracion(root_path, config)
+
+    config.read(config_path)
+
+    try:
+        key_path = mover_credenciales(config, root_path)
+        guardar_config(config, config_path)
+
+        creds = authentication_gmail(key_file=key_path)
+
+        print("Verificando acceso a Gmail...")
+        if build('gmail', 'v1', credentials=creds).users().messages().list(userId='me').execute():
+            print("Acceso exitoso a Gmail.")
+
+        print("Creando carpeta en Google Drive...")
+        folder_name = config.get('configurations', 'folder_name')
+        drive_data = prueba_google_drive(folder_name, creds)
+        config.set('configurations', 'folder_id', drive_data['folder_id'])
+        config.set('configurations', 'url_folder', drive_data['url_folder'])
+        guardar_config(config, config_path)
+
+        print("Creando y probando hoja en Google Sheets...")
+        sheet_name = config.get('configurations', 'sheet_name')
+        csirt_names = json.loads(config.get('configurations', 'csirt_names'))
+        sheet_data = prueba_google_sheet(sheet_name, csirt_names, creds, config)
+        config.set('configurations', 'sheet_id', sheet_data['sheet_id'])
+        config.set('configurations', 'sheet_url', sheet_data['sheet_url'])
+        guardar_config(config, config_path)
+
+        print("✅ Instalación y configuración completadas.")
+
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        for folder in ['Config', 'Logs', 'Keys']:
+            folder_path = os.path.join(root_path, folder)
+            if os.path.exists(folder_path):
+                shutil.rmtree(folder_path)
+
+
+if __name__ == "__main__":
+    main()

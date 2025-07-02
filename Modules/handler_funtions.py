@@ -14,8 +14,10 @@ import logging
 import base64
 import locale
 import time
+import json
 import copy
 import re
+import os
 
 
 REG_SUBJECT = r'\[(.*)\]\s((ioc|reporte)\scsirt)$'
@@ -516,3 +518,102 @@ def mark_as_read(creds, user_id='me', msg_id=''):
     service = build('gmail', 'v1', credentials=creds)
     body = {'removeLabelIds': ['UNREAD']}
     service.users().messages().modify(userId=user_id, id=msg_id, body=body).execute()
+
+def prueba_google_drive(folder_name, creds):
+    folder_metadata = {
+        'name': folder_name,
+        'mimeType': 'application/vnd.google-apps.folder'
+    }
+
+    # Agregar permisos para compartir la carpeta
+    share_permission = {
+        'type': 'anyone',
+        'role': 'writer'
+    }
+
+    drive_service = build('drive', 'v3', credentials=creds)
+    folder_id = check_file_exists(drive_service, folder_name, 'application/vnd.google-apps.folder')
+
+    if not folder_id:
+        folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
+        folder_id = folder['id']
+        print(f"Prueba de acceso y creacion de carpeta compartida {folder_name} exitosa...")
+    else:
+        print(f"Prueba de acceso exitosa, carpeta compartida {folder_name} ya existe")
+
+    drive_service.permissions().create(fileId=folder_id, body=share_permission).execute()
+    url_folder = get_file_folder_url(drive_service, folder_id)
+    data_config = {'url_folder': url_folder, 'folder_id': folder_id}
+    return data_config
+
+def get_file_folder_url(service, file_id):
+    # Obtiene la información del archivo
+    file_info = service.files().get(fileId=file_id, fields='webViewLink').execute()
+
+    # Obtiene y retorna la URL de visualización del archivo
+    return file_info.get('webViewLink', None)
+
+def check_file_exists(service, file_name, type_file):
+    results = service.files().list(q=f"name='{file_name}' and mimeType='{type_file}' and trashed=false").execute()
+    files = results.get('files', [])
+    if files:
+        return files[0]['id']
+    else:
+        return False
+
+
+def crear_configuracion(root_path, config_cfg):
+    ruta_archivo_cfg = os.path.join(root_path, 'Config', "configuration.cfg")
+    try:
+        if not os.path.isfile(ruta_archivo_cfg):
+            while True:
+                credentials_name = os.path.join(root_path, input(
+                    "Ingresar nombre del archivo json descargada de Google: ").strip())
+                domain = input("Ingresar dominio permitido de recepción de correo (ej. @gmail.com): ").strip()
+                time_wait_str = input("Ingrese el tiempo de cada búsqueda de correos (En segundos): ").strip()
+                folder_name = input("Ingresar el nombre de la carpeta compartida a crear en Google Drive: ").strip()
+                sheet_name = input("Ingrese el nombre de la Hoja de calculo a crear en Google Drive: ").strip()
+
+                if credentials_name and domain and time_wait_str and folder_name and sheet_name:
+                    try:
+                        time_wait = int(time_wait_str)
+                        if time_wait > 0:
+                            break
+                        else:
+                            print("El tiempo de espera debe ser un número entero positivo.")
+                    except ValueError:
+                        print("Ingrese un valor numérico válido para el tiempo de espera.")
+                else:
+                    print("Todos los campos son obligatorios. Por favor, ingrese la información solicitada.")
+
+            csirt_mapping = {
+                "8FPH": "Phishing",
+                "2CMV": "Malware",
+                "8FFR": "Sitios Fraudulentos",
+                "4IIA": "Ataques de Fuerza Bruta",
+                "4IIV": "Ataques de Fuerza Bruta",
+                "ACF": "Campaña Fraudulenta",
+                "AIA": "Investigacion de Amenazas"
+            }
+
+            config_cfg['credentials'] = {'path_key': credentials_name}
+            config_cfg['configurations'] = {'domain': domain,
+                                            'time_wait': time_wait,
+                                            'folder_name': folder_name,
+                                            'sheet_name': sheet_name,
+                                            'folder_id': "",
+                                            'sheet_id': "",
+                                            'csirt_names': json.dumps(csirt_mapping, ensure_ascii=False)}
+
+            with open(ruta_archivo_cfg, "w") as configfile:
+                config_cfg.write(configfile)
+
+            print(f"Archivo '{ruta_archivo_cfg}' creado correctamente.")
+
+            return ruta_archivo_cfg
+        else:
+            print(f"El archivo '{ruta_archivo_cfg}' ya existe.")
+            return ruta_archivo_cfg
+
+    except Exception as e:
+        print(f"Error al crear el archivo .cfg: {e}")
