@@ -431,7 +431,7 @@ def get_alert_csirt_lastweek(data_csirt, first_day_lastweek, last_day_lastweek):
         print(f"Error al procesar la fecha {data_csirt}: {e}")
 
 
-def get_html_report(data_csirt):
+def get_html_report(data_csirt, csirt_names):
     count = 1
     matriz_data = []
     columns = [
@@ -449,42 +449,19 @@ def get_html_report(data_csirt):
     for csirt, values in data_csirt.items():
         for value in values:
             data_individual = []
-            if csirt == '8FPH':
-                data_individual.extend([
+            data_individual.extend([
                     count,
                     value[3],
                     value[0],
                     'Fraude Phishing',
                     'Alta',
                     'CSIRT',
-                    'Bloqueo URL/SMTP/Filtro contenido',
+                    csirt_names[csirt],
                     value[3],
                     'OK'
                 ])
-            elif csirt == '2CMV':
-                data_individual.extend([
-                    count,
-                    value[3],
-                    value[0],
-                    'Fraude Malware',
-                    'Alta',
-                    'CSIRT',
-                    'Bloqueo URL/Dominio/Hash',
-                    value[3],
-                    'OK'
-                ])
-            elif csirt == '8FFR':
-                data_individual.extend([
-                    count,
-                    value[3],
-                    value[0],
-                    'Fraude Malware',
-                    'Alta',
-                    'CSIRT',
-                    'Bloqueo URL/Dominio',
-                    value[3],
-                    'OK'
-                ])
+
+
             matriz_data.append(data_individual)
             count += 1
     df = pd.DataFrame(matriz_data, columns=columns)

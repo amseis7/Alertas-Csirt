@@ -112,7 +112,7 @@ class GestionIoc(threading.Thread):
             if result:
                 alert_csirt_last_week[sheet_name] = result
         first_day_lastweek += timedelta(days=1)
-        html_email = handler_funtions.get_html_report(alert_csirt_last_week)
+        html_email = handler_funtions.get_html_report(alert_csirt_last_week, self.csirt_name)
         handler_funtions.send_reply(self.creds, sender_to=email_info['sender_email'],
                                     reply_subject=f'Re: {email_info["subject"].split(" ")[0]} '
                                                   f'REPORTE SEGURIDAD SEMANA '
