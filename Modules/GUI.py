@@ -1,4 +1,4 @@
-import os.path
+import os
 from Modules.handler_funtions import authentication_gmail
 from Modules.handler_variables_email import format_sheets_csirt
 from Modules.gestioncsirt import GestionIoc
@@ -49,6 +49,18 @@ class ConfiguracionVentana(tk.Toplevel):
         self.row_csirt = 0
 
         self.creds = authentication_gmail(key_file=self.configuracion.get('credentials', 'path_key'))
+
+        # Logger
+        import logging
+        import os
+        log_path = os.path.join("Logs", "configuracion.log")
+        self.logger = logging.getLogger("configuracion_logger")
+        self.logger.setLevel(logging.INFO)
+        if not self.logger.handlers:
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            file_handler = logging.FileHandler(log_path, encoding='utf-8')
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
 
         self.crear_frame_credenciales()
         self.crear_frame_configuracion_general()
@@ -202,19 +214,29 @@ class ConfiguracionVentana(tk.Toplevel):
         # try:
         import json
 
+        self.logger.info("Se inició el guardado de la configuración.")
+
         if self.change_name_folder:
+            self.logger.info(f"Cambio de nombre de carpeta detectado: {self.folder_var.get()}")
             self.change_name_file_folder(self.folder_var.get(),
                                          self.configuracion.get('configurations', 'folder_id'))
         if self.change_name_sheet:
+            self.logger.info(f"Cambio de nombre de hoja detectado: {self.sheet_var.get()}")
             self.change_name_file_folder(self.sheet_var.get(),
                                          self.configuracion.get('configurations', 'sheet_id'))
 
         # Guarda los cambios en la configuración
         self.configuracion.set('credentials', 'path_key', self.cred_path.get())
+        self.logger.info(f"Ruta de credenciales actualizada: {self.cred_path.get()}")
         self.configuracion.set('configurations', 'domain', self.domain_entry.get())
+        self.logger.info(f"Dominio actualizado: {self.domain_entry.get()}")
         self.configuracion.set('configurations', 'time_wait', self.time_wait_entry.get())
+        self.logger.info(f"Tiempo de espera actualizado: {self.time_wait_entry.get()}")
         self.configuracion.set('configurations', 'folder_name', self.folder_name_entry.get())
+        self.logger.info(f"Nombre de la carpeta actualizado: {self.folder_name_entry.get()}")
         self.configuracion.set('configurations', 'sheet_name', self.sheet_name_entry.get())
+        self.logger.info(f"Nombre de la hoja actualizado: {self.sheet_name_entry.get()}")
+
 
         # === Armar nuevo diccionario csirt_names ===
         nuevo_csirt = dict()
@@ -223,24 +245,21 @@ class ConfiguracionVentana(tk.Toplevel):
             value = entry['value_var'].get().strip()
             if key and value:
                 nuevo_csirt[key] = value
-        if set(self.csirt_dict.keys()) == set(nuevo_csirt.keys()):
-            print("Las claves son iguales")
-        else:
-            print("Las claves son diferentes")
+        if set(self.csirt_dict.keys()) != set(nuevo_csirt.keys()):
+            self.logger.info("Cambios en CSIRT detectados. Sincronizando hojas...")
             sheet_id = self.configuracion.get('configurations', 'sheet_id')
             self.sincronizar_hojas(self.csirt_dict, nuevo_csirt, sheet_id)
             # Guardar diccionario como string JSON en el archivo cfg
             self.configuracion.set('configurations', 'csirt_names', json.dumps(nuevo_csirt, ensure_ascii=False))
 
+
         # Guarda la configuración en el archivo
         with open('Config\\configuration.cfg', 'w') as config_file:
             self.configuracion.write(config_file)
+        self.logger.info("Configuración guardada correctamente en 'configuration.cfg'.")
 
         # Cierra la ventana
         self.cerrar_ventana()
-
-        # except Exception as e:
-        #    print(e)
 
     def sincronizar_hojas(self, old_csirt, new_csirt, sheet_id):
         hojas_actuales = self.obtener_nombres_hojas(sheet_id)
@@ -306,8 +325,10 @@ class ConfiguracionVentana(tk.Toplevel):
         if self.is_modify:
             response = messagebox.askyesno("Cancelar Cambios", "¿Desea salir sin guardar los cambios?", parent=self)
             if response:
+                self.logger.info("Cambios cancelados por el usuario.")
                 self.cerrar_ventana()
         else:
+            self.logger.info("Ventana de configuración cerrada sin cambios.")
             self.cerrar_ventana()
 
     def seleccionar_archivo(self):
@@ -331,11 +352,9 @@ class ConfiguracionVentana(tk.Toplevel):
 
     def set_folder_changed(self):
         self.change_name_folder = True
-        print("Cambio en el nombre de carpeta: ", self.folder_var.get())
 
     def set_sheet_changed(self):
         self.change_name_sheet = True
-        print("Cambio en el nombre de hoja: ", self.sheet_var.get())
 
     def validate_entry_in(self, event):
         self.copy_entry = event.widget.get()
@@ -360,9 +379,6 @@ class MiApp:
 
         # Configuración
         self.cargar_configuracion()
-
-        """self.configuracion = configparser.ConfigParser()
-        self.configuracion.read(os.path.join("Config", "configuration.cfg"))"""
 
         # Menú en cascada
         self.menu_bar = tk.Menu(root)
