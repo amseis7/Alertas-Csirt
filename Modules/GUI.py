@@ -1,5 +1,5 @@
 import os
-from Modules.handler_funtions import authentication_gmail
+from Modules.handler_funtions import authenticate_google_services
 from Modules.handler_variables_email import format_sheets_csirt
 from Modules.gestioncsirt import GestionIoc
 from googleapiclient.discovery import build
@@ -48,7 +48,7 @@ class ConfiguracionVentana(tk.Toplevel):
         self.csirt_dict = {}
         self.row_csirt = 0
 
-        self.creds = authentication_gmail(key_file=self.configuracion.get('credentials', 'path_key'))
+        self.creds = authenticate_google_services(key_file=self.configuracion.get('credentials', 'path_key'))
 
         # Logger
         import logging

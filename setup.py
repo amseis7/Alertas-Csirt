@@ -5,7 +5,7 @@ import configparser
 import json
 from googleapiclient.discovery import build
 
-from Modules.handler_funtions import authentication_gmail
+from Modules.handler_funtions import authenticate_google_services
 from Modules import handler_variables_email
 from Modules.handler_funtions import prueba_google_drive, get_file_folder_url, check_file_exists
 
@@ -102,7 +102,7 @@ def main():
         key_path = mover_credenciales(config, root_path)
         guardar_config(config, config_path)
 
-        creds = authentication_gmail(key_file=key_path)
+        creds = authenticate_google_services(key_file=key_path)
 
         print("Verificando acceso a Gmail...")
         if build('gmail', 'v1', credentials=creds).users().messages().list(userId='me').execute():
