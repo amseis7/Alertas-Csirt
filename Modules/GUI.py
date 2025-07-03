@@ -1,67 +1,123 @@
-from Modules.handler_funtions import authentication_gmail
+import os
+from Modules.handler_funtions import authenticate_google_services
 from Modules.handler_variables_email import format_sheets_csirt
 from Modules.gestioncsirt import GestionIoc
 from googleapiclient.discovery import build
-from tkinter import messagebox
-from tkinter import filedialog
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 import tkinter as tk
 import configparser
 import threading
 import datetime
 import logging
+import json
+
+LABELS = {
+    "title": "Configuracion",
+    "cred_path": "Ruta credenciales:",
+    "select_file": "Seleccionar Archivo",
+    "domain": "Dominio:",
+    "wait_time": "Tiempo de espera (s):",
+    "folder_name": "Nombre de la carpeta:",
+    "sheet_name": "Nombre de la hoja:"
+}
 
 
 class ConfiguracionVentana(tk.Toplevel):
     def __init__(self, master, configuracion):
         super().__init__(master)
-        self.title("Configuración")
+        self.title(LABELS["title"])
         self.resizable(False, False)
-        self.is_modify = False
+        self.attributes('-topmost', 1)
+
         self.configuracion = configuracion
+        self.is_modify = False
         self.change_name_folder = False
         self.change_name_sheet = False
 
-        # Etiqueta y entrada para la configuracion de la key de Google
-        tk.Label(self, text="Ruta credencial: ").grid(sticky='w', row=0, column=0, padx=10, pady=5)
-        self.cred_path = tk.Entry(self)
+        self.cred_path = None
+        self.domain_entry = None
+        self.time_wait_entry = None
+        self.folder_var = None
+        self.folder_name_entry = None
+        self.sheet_var = None
+        self.sheet_name_entry = None
+
+        self.canvas_csirt = None
+        self.scrollable_frame_csirt = None
+        self.csirt_entries = {}
+        self.csirt_dict = {}
+        self.row_csirt = 0
+
+        self.creds = authenticate_google_services(key_file=self.configuracion.get('credentials', 'path_key'))
+
+        # Logger
+        import logging
+        import os
+        log_path = os.path.join("Logs", "configuracion.log")
+        self.logger = logging.getLogger("configuracion_logger")
+        self.logger.setLevel(logging.INFO)
+        if not self.logger.handlers:
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            file_handler = logging.FileHandler(log_path, encoding='utf-8')
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
+
+        self.crear_frame_credenciales()
+        self.crear_frame_configuracion_general()
+        self.crear_frame_csirt()
+        self.crear_botones_accion()
+        self.configurar_validaciones()
+
+        self.protocol("WM_DELETE_WINDOW", self.cerrar_ventana)
+
+    def crear_frame_credenciales(self):
+        frame = ttk.LabelFrame(self, text="Credenciales")
+        frame.grid(row=0, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+
+        ttk.Label(frame, text=LABELS["cred_path"]).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.cred_path = ttk.Entry(frame, width=50)
         self.cred_path.insert(0, self.configuracion.get('credentials', 'path_key'))
-        self.cred_path.grid(sticky='ew', row=0, column=1, padx=10, pady=5)
-        self.boton_seleccionar = tk.Button(self, text="Seleccionar Archivo", command=self.seleccionar_archivo)
-        self.boton_seleccionar.grid(row=0, column=2, padx=10, pady=5)
+        self.cred_path.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
 
-        # Etiqueta y entrada para la configuración del dominio
-        tk.Label(self, text="Dominio:").grid(sticky='w', row=1, column=0, padx=10, pady=5)
-        self.domain_entry = ttk.Entry(self)
+        ttk.Button(frame, text=LABELS["select_file"], command=self.seleccionar_archivo).grid(row=0, column=2, padx=5, pady=5)
+
+        frame.columnconfigure(1, weight=1)
+
+    def crear_frame_configuracion_general(self):
+        frame = ttk.LabelFrame(self, text="Parámetros de configuración")
+        frame.grid(row=1, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+
+        ttk.Label(frame, text=LABELS["domain"]).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.domain_entry = ttk.Entry(frame)
         self.domain_entry.insert(0, self.configuracion.get('configurations', 'domain'))
-        self.domain_entry.grid(sticky='ew', row=1, column=1, padx=10, pady=5)
+        self.domain_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
-        # Etiqueta y entrada para el tiempo de espera
-        tk.Label(self, text="Tiempo de espera:").grid(sticky='w', row=2, column=0, padx=10, pady=5)
-        self.time_wait_entry = ttk.Spinbox(self, from_=0, to=9999, increment=1)
+        ttk.Label(frame, text=LABELS["wait_time"]).grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        self.time_wait_entry = ttk.Spinbox(frame, from_=1, to=9999, increment=1)
         self.time_wait_entry.insert(0, self.configuracion.get('configurations', 'time_wait'))
-        self.time_wait_entry.grid(sticky='ew', row=2, column=1, padx=10, pady=5)
+        self.time_wait_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
-        # Etiqueta y entrada para el nombre de la carpeta
-        tk.Label(self, text="Nombre de la carpeta:").grid(sticky='w', row=3, column=0, padx=10, pady=5)
+        ttk.Label(frame, text=LABELS["folder_name"]).grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.folder_var = tk.StringVar()
         self.folder_var.set(self.configuracion.get('configurations', 'folder_name'))
         self.folder_var.trace_add("write", lambda *args: self.set_folder_changed())
-        self.folder_name_entry = tk.Entry(self, textvariable=self.folder_var)
-        self.folder_name_entry.grid(sticky='ew', row=3, column=1, padx=10, pady=5)
+        self.folder_name_entry = ttk.Entry(frame, textvariable=self.folder_var)
+        self.folder_name_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
-        # Etiqueta y entrada para el nombre de la hoja
-        tk.Label(self, text="Nombre de la hoja:").grid(sticky='w', row=4, column=0, padx=10, pady=5)
+        ttk.Label(frame, text=LABELS["sheet_name"]).grid(row=3, column=0, padx=5, pady=5, sticky="w")
         self.sheet_var = tk.StringVar()
         self.sheet_var.set(self.configuracion.get('configurations', 'sheet_name'))
         self.sheet_var.trace_add("write", lambda *args: self.set_sheet_changed())
-        self.sheet_name_entry = tk.Entry(self, textvariable=self.sheet_var)
-        self.sheet_name_entry.grid(sticky='ew', row=4, column=1, padx=10, pady=5)
+        self.sheet_name_entry = ttk.Entry(frame, textvariable=self.sheet_var)
+        self.sheet_name_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
-        # Etiqueta y entrada para nombres de los codigos csirt
-        self.labelFrame_csirt_name = ttk.LabelFrame(self, text="Categorias CSIRT:")
-        self.labelFrame_csirt_name.grid(sticky='ew', row=5, column=0, columnspan=3, padx=10, pady=5)
-        # Canvas + Scrollbar
+        frame.columnconfigure(1, weight=1)
+
+    def crear_frame_csirt(self):
+        import json
+        self.labelFrame_csirt_name = ttk.LabelFrame(self, text="Categorías CSIRT")
+        self.labelFrame_csirt_name.grid(row=2, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+
         self.canvas_csirt = tk.Canvas(self.labelFrame_csirt_name, height=150)
         scrollbar = ttk.Scrollbar(self.labelFrame_csirt_name, orient="vertical", command=self.canvas_csirt.yview)
         self.scrollable_frame_csirt = tk.Frame(self.canvas_csirt)
@@ -79,26 +135,24 @@ class ConfiguracionVentana(tk.Toplevel):
         scrollbar.grid(row=0, column=1, sticky='ns')
 
         self.csirt_entries = {}
-        import json
         self.csirt_dict = json.loads(self.configuracion.get('configurations', 'csirt_names'))
         self.row_csirt = 0
         self.agregar_campos_csirt_iniciales()
-        tk.Button(self.labelFrame_csirt_name, text="+ Agregar categoría", command=self.agregar_campo_csirt).grid(row=8, column=0, columnspan=2, pady=5)
 
-        # Botón para guardar la configuración
-        ttk.Button(self, text="Guardar", command=self.guardar_configuracion).grid(row=7, column=0, pady=10, padx=25)
-        ttk.Button(self, text="Cancelar", command=self.cancelar_configuracion).grid(row=7, column=1, pady=10, padx=25)
+        tk.Button(self.labelFrame_csirt_name, text="+ Agregar categoría", command=self.agregar_campo_csirt)\
+            .grid(row=1, column=0, columnspan=2, pady=5)
 
-        # Logica de validacion bind en entry
+    def crear_botones_accion(self):
+        ttk.Button(self, text="Guardar", command=self.guardar_configuracion).grid(row=3, column=0, pady=10, padx=25)
+        ttk.Button(self, text="Cancelar", command=self.cancelar_configuracion).grid(row=3, column=1, pady=10, padx=25)
+
+    def configurar_validaciones(self):
         self.domain_entry.bind("<FocusOut>", self.validate_entry_out)
         self.time_wait_entry.bind("<FocusOut>", self.validate_entry_out)
         self.domain_entry.bind("<FocusIn>", self.validate_entry_in)
         self.time_wait_entry.bind("<FocusIn>", self.validate_entry_in)
         self.folder_name_entry.bind("<FocusIn>", self.validate_entry_in)
         self.sheet_name_entry.bind("<FocusIn>", self.validate_entry_in)
-
-        self.attributes('-topmost', 1)
-        self.protocol("WM_DELETE_WINDOW", self.cerrar_ventana)
 
     def bind_mousewheel_to_canvas(self, canvas):
         def _on_mousewheel(event):
@@ -160,19 +214,29 @@ class ConfiguracionVentana(tk.Toplevel):
         # try:
         import json
 
+        self.logger.info("Se inició el guardado de la configuración.")
+
         if self.change_name_folder:
+            self.logger.info(f"Cambio de nombre de carpeta detectado: {self.folder_var.get()}")
             self.change_name_file_folder(self.folder_var.get(),
                                          self.configuracion.get('configurations', 'folder_id'))
         if self.change_name_sheet:
+            self.logger.info(f"Cambio de nombre de hoja detectado: {self.sheet_var.get()}")
             self.change_name_file_folder(self.sheet_var.get(),
                                          self.configuracion.get('configurations', 'sheet_id'))
 
         # Guarda los cambios en la configuración
         self.configuracion.set('credentials', 'path_key', self.cred_path.get())
+        self.logger.info(f"Ruta de credenciales actualizada: {self.cred_path.get()}")
         self.configuracion.set('configurations', 'domain', self.domain_entry.get())
+        self.logger.info(f"Dominio actualizado: {self.domain_entry.get()}")
         self.configuracion.set('configurations', 'time_wait', self.time_wait_entry.get())
+        self.logger.info(f"Tiempo de espera actualizado: {self.time_wait_entry.get()}")
         self.configuracion.set('configurations', 'folder_name', self.folder_name_entry.get())
+        self.logger.info(f"Nombre de la carpeta actualizado: {self.folder_name_entry.get()}")
         self.configuracion.set('configurations', 'sheet_name', self.sheet_name_entry.get())
+        self.logger.info(f"Nombre de la hoja actualizado: {self.sheet_name_entry.get()}")
+
 
         # === Armar nuevo diccionario csirt_names ===
         nuevo_csirt = dict()
@@ -181,11 +245,8 @@ class ConfiguracionVentana(tk.Toplevel):
             value = entry['value_var'].get().strip()
             if key and value:
                 nuevo_csirt[key] = value
-        print(nuevo_csirt.keys())
-        if set(self.csirt_dict.keys()) == set(nuevo_csirt.keys()):
-            print("Las claves son iguales")
-        else:
-            print("Las claves son diferentes")
+        if set(self.csirt_dict.keys()) != set(nuevo_csirt.keys()):
+            self.logger.info("Cambios en CSIRT detectados. Sincronizando hojas...")
             sheet_id = self.configuracion.get('configurations', 'sheet_id')
             self.sincronizar_hojas(self.csirt_dict, nuevo_csirt, sheet_id)
             # Guardar diccionario como string JSON en el archivo cfg
@@ -195,12 +256,10 @@ class ConfiguracionVentana(tk.Toplevel):
         # Guarda la configuración en el archivo
         with open('Config\\configuration.cfg', 'w') as config_file:
             self.configuracion.write(config_file)
+        self.logger.info("Configuración guardada correctamente en 'configuration.cfg'.")
 
         # Cierra la ventana
         self.cerrar_ventana()
-
-        # except Exception as e:
-        #    print(e)
 
     def sincronizar_hojas(self, old_csirt, new_csirt, sheet_id):
         hojas_actuales = self.obtener_nombres_hojas(sheet_id)
@@ -218,8 +277,7 @@ class ConfiguracionVentana(tk.Toplevel):
                 sheet_id_to_delete = hojas_actuales[clave]
                 requests_eliminar.append({'deleteSheet': {'sheetId': sheet_id_to_delete}})
 
-        creds = authentication_gmail(key_file=self.cred_path.get())
-        sheet_service = build('sheets', 'v4', credentials=creds)
+        sheet_service = build('sheets', 'v4', credentials=self.creds)
 
         if requests_eliminar:
             sheet_service.spreadsheets().batchUpdate(
@@ -258,19 +316,19 @@ class ConfiguracionVentana(tk.Toplevel):
         print(f"✅ Hoja '{clave}' creada y formateada.")
 
     def obtener_nombres_hojas(self, sheet_id):
-        creds = authentication_gmail(key_file=self.cred_path.get())
-        sheet_service = build('sheets', 'v4', credentials=creds)
-
+        sheet_service = build('sheets', 'v4', credentials=self.creds)
         sheet_metadata = sheet_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
         sheets = sheet_metadata.get('sheets', [])
         return {sheet['properties']['title']: sheet['properties']['sheetId'] for sheet in sheets}
 
     def cancelar_configuracion(self):
         if self.is_modify:
-            response = messagebox.askyesno("Cancelar Cambios", "¿Desea salir sin guardar los cambios?")
+            response = messagebox.askyesno("Cancelar Cambios", "¿Desea salir sin guardar los cambios?", parent=self)
             if response:
+                self.logger.info("Cambios cancelados por el usuario.")
                 self.cerrar_ventana()
         else:
+            self.logger.info("Ventana de configuración cerrada sin cambios.")
             self.cerrar_ventana()
 
     def seleccionar_archivo(self):
@@ -294,30 +352,17 @@ class ConfiguracionVentana(tk.Toplevel):
 
     def set_folder_changed(self):
         self.change_name_folder = True
-        print("Cambio en el nombre de carpeta: ", self.folder_var.get())
 
     def set_sheet_changed(self):
         self.change_name_sheet = True
-        print("Cambio en el nombre de hoja: ", self.sheet_var.get())
 
     def validate_entry_in(self, event):
         self.copy_entry = event.widget.get()
 
     def change_name_file_folder(self, name, fileid):
-        creds = authentication_gmail(key_file=self.cred_path.get())
-        drive_service = build('drive', 'v3', credentials=creds)
-        folder = drive_service.files().get(fileId=fileid).execute()
-        updated_folder = drive_service.files().update(fileId=fileid, body={'name': name}).execute()
-
-    def add_sheets_db(self):
-        creds = authentication_gmail(key_file=self.cred_path.get())
-        drive_service = build('sheets', 'v4', credentials=creds)
-
-    def delete_sheets_db(self):
-        creds = authentication_gmail(key_file=self.cred_path.get())
-        service_sheet = build('sheets', 'v4', credentials=creds)
-
-
+        drive_service = build('drive', 'v3', credentials=self.creds)
+        drive_service.files().get(fileId=fileid).execute()
+        drive_service.files().update(fileId=fileid, body={'name': name}).execute()
 
 
 class MiApp:
@@ -327,9 +372,13 @@ class MiApp:
         self.root.resizable(False, False)
         self.threading_csirt = False
 
+        self.logger = None
+        self.thread = None
+        self.start_service = None
+        self.configuracion = None
+
         # Configuración
-        self.configuracion = configparser.ConfigParser()
-        self.configuracion.read('Config\\configuration.cfg')
+        self.cargar_configuracion()
 
         # Menú en cascada
         self.menu_bar = tk.Menu(root)
@@ -373,32 +422,61 @@ class MiApp:
         labelframe_top.pack(fill="both", expand=True, padx=5, ipady=3)
         labelframe_bottom.pack(fill="both", expand=True, padx=5, ipady=3)
 
+    def cargar_configuracion(self):
+        config_path = os.path.join("Config", "configuration.cfg")
+        if not os.path.exists(config_path):
+            messagebox.showerror("Error", f"No se encontró el archivo de configuración en:\n{config_path}")
+            self.root.destroy()
+            return
+        self.configuracion = configparser.ConfigParser()
+        self.configuracion.read(config_path)
+
+    def obtener_configuracion_formateada(self):
+        output = []
+        for section in sorted(self.configuracion.sections()):
+            output.append("=" * 50)
+            output.append(f"📂 Sección: [{section.upper()}]")
+            output.append("-" * 50)
+            for key in sorted(self.configuracion[section]):
+                value = self.configuracion.get(section, key)
+                # Mostrar csirt_names como lista legible si es JSON válido
+                if key == "csirt_names":
+                    try:
+                        csirt_dict = json.loads(value)
+                        output.append(f"{key} :")
+                        for k, v in csirt_dict.items():
+                            output.append(f"   • {k} → {v}")
+                    except json.JSONDecodeError:
+                        output.append(f"{key:<15} : {value}")
+                else:
+                    output.append(f"{key:<15} : {value}")
+            output.append("")  # Línea vacía entre secciones
+        return "\n".join(output)
+
     def ver_configuracion(self):
         # Muestra la configuración actual en una ventana de mensaje
-        config_str = f"[credentials]\npath_key = {self.configuracion.get('credentials', 'path_key')}\n\n" \
-                     f"[configurations]\ndomain = {self.configuracion.get('configurations', 'domain')}\n" \
-                     f"time_wait = {self.configuracion.get('configurations', 'time_wait')}\n" \
-                     f"folder_name = {self.configuracion.get('configurations', 'folder_name')}\n" \
-                     f"sheet_name = {self.configuracion.get('configurations', 'sheet_name')}"
-
-        messagebox.showinfo("Configuración", config_str)
+        messagebox.showinfo("Configuración", self.obtener_configuracion_formateada())
 
     def abrir_ventana_configuracion(self):
         # Abre la ventana de configuración
         ConfiguracionVentana(self.root, self.configuracion)
 
     def iniciar_script(self):
-        # Inicia el script en un hilo aparte
+        """Inicia el servicio de gestión de IoC en un hilo separado."""
         self.update_text("info", "Iniciando el script...")
         self.start_service = threading.Thread(target=self.script_paralelo)
         self.start_service.start()
 
     def detener_script(self):
-        # Detiene el script (simulando detener el servicio)
+        """Detiene el servicio de gestión de IoC."""
         self.update_text("info", "Deteniendo el script")
         self.threading_csirt = False
-        self.thread.stop()
-        self.thread.join()
+        try:
+            self.thread.stop()
+            self.thread.join()
+        except Exception as e:
+            self.logger.warning(f"No se pudo detener el hilo: {e}")
+
         self.btn_iniciar.config(state='normal')
         self.btn_detener.config(state='disabled')
         self.config_menu.entryconfig("Configuración", state="normal")
@@ -421,12 +499,15 @@ class MiApp:
         self.log_text.yview(tk.END)  # Desplazar la caja de texto para mostrar el último registro
         self.log_text.config(state='disabled')
 
-        if level_log.lower() == "info":
-            self.logger.info(message)
-        elif level_log.lower() == "warning":
-            self.logger.warning(message)
-        elif level_log.lower() == "error":
-            self.logger.error(message)
+        try:
+            if level_log.lower() == "info":
+                self.logger.info(message)
+            elif level_log.lower() == "warning":
+                self.logger.warning(message)
+            elif level_log.lower() == "error":
+                self.logger.error(message)
+        except Exception as e:
+            print(f"Error al escribir en el log: {e}")
 
         if is_error:
             self.detener_script()
@@ -444,13 +525,14 @@ class MiApp:
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
         # Crear manejador para el archivo de registros de nivel DEBUG
-        info_handler = logging.FileHandler('Logs\\main.log')
+        info_handler = logging.FileHandler(os.path.join('Logs', 'main.log'))
         info_handler.setLevel(logging.INFO)
         info_handler.setFormatter(formatter)
         self.logger.addHandler(info_handler)
 
     def on_closing(self):
         if self.threading_csirt:
+            messagebox.showwarning("Aviso", "Detén el servicio antes de cerrar la aplicación.")
             return
         self.root.destroy()
 
