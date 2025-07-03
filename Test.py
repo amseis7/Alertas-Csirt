@@ -1,138 +1,83 @@
+import tkinter as tk
+import tkinter.messagebox as messagebox
+import base64
 import os
+import requests
+import zipfile
+import io
 import shutil
-import subprocess
-import configparser
-import json
-from googleapiclient.discovery import build
+import sys
+import webbrowser
 
-from Modules.handler_funtions import authentication_gmail
-from Modules import handler_variables_email
-from Modules.handler_funtions import prueba_google_drive, get_file_folder_url, check_file_exists
+GITHUB_OWNER = "amseis7"
+GITHUB_REPO = "Alertas-Csirt"
 
-
-def instalar_dependencias(requirements_file):
+def get_current_version():
     try:
-        subprocess.check_call(["pip", "install", "-r", requirements_file])
-        print("Módulos instalados correctamente.")
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Error al instalar dependencias: {e}")
+        with open("version.txt", "r") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return "0.0.0"  # Valor por defecto si no existe el archivo
 
-
-def crear_directorios(base_path):
-    for folder in ["Config", "Logs", "Keys"]:
-        os.makedirs(os.path.join(base_path, folder), exist_ok=True)
-        print(f"Carpeta creada o ya existente: {folder}")
-
-
-def mover_credenciales(config, base_path):
-    key_path = config.get('credentials', 'path_key')
-    if not os.path.isfile(key_path):
-        raise FileNotFoundError(f"ERROR: No se encontró el archivo '{key_path}'")
-
-    file_name = os.path.basename(key_path)
-    dest_path = os.path.join(base_path, "Keys", file_name)
-    shutil.move(key_path, dest_path)
-    config.set('credentials', 'path_key', dest_path)
-    return dest_path
-
-
-def guardar_config(config, ruta_config):
-    with open(ruta_config, 'w') as configfile:
-        config.write(configfile)
-
-
-def prueba_google_sheet(sheet_name, dict_csirt_name, creds, config):
-    service_sheet = build('sheets', 'v4', credentials=creds)
-    service_drive = build('drive', 'v3', credentials=creds)
-
-    sheet_id = check_file_exists(service_drive, sheet_name, 'application/vnd.google-apps.spreadsheet')
-    spreadsheet_body = {
-        'properties': {'title': sheet_name},
-        'sheets': [{'properties': {'title': name}} for name in dict_csirt_name.keys()]
-    }
-
-    if not sheet_id:
-        spreadsheet = service_sheet.spreadsheets().create(body=spreadsheet_body).execute()
-        sheet_id = spreadsheet['spreadsheetId']
-        for sheet in spreadsheet['sheets']:
-            title = sheet['properties']['title']
-            values = dict_csirt_name[title]
-            requests = handler_variables_email.format_sheets_csirt(sheet['properties']['sheetId'], values)
-            service_sheet.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={'requests': requests}).execute()
-        print("Hoja creada y configurada.")
-    else:
-        print("Hoja ya existe.")
-
-    file = service_drive.files().get(fileId=sheet_id, fields="parents").execute()
-    previous_parents = ",".join(file.get("parents"))
-    service_drive.files().update(
-        fileId=sheet_id,
-        addParents=config.get('configurations', 'folder_id'),
-        removeParents=previous_parents,
-        fields="id, parents"
-    ).execute()
-    service_drive.permissions().create(
-        fileId=sheet_id,
-        body={'role': 'reader', 'type': 'anyone', 'allowFileDiscovery': False}
-    ).execute()
-
-    url = get_file_folder_url(service_drive, sheet_id)
-    return {'sheet_id': sheet_id, 'sheet_url': url}
-
-
-def main():
-    print("#" * 55)
-    print("#   Preparación de Servicio Gestión CSIRT en Python   #")
-    print("#" * 55)
-
-    root_path = os.getcwd()
-    requirements_path = os.path.join(root_path, "requeriment.txt")
-    config_path = os.path.join(root_path, "Config", "configuration.cfg")
-    config = configparser.ConfigParser()
-
-    instalar_dependencias(requirements_path)
-    crear_directorios(root_path)
-
-    print("Creando archivo de configuración...")
-    from Modules.handler_funtions import crear_configuracion
-    config_path = crear_configuracion(root_path, config)
-
-    config.read(config_path)
-
+def get_latest_version_and_url():
+    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
     try:
-        key_path = mover_credenciales(config, root_path)
-        guardar_config(config, config_path)
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        tag_version = data["tag_name"].lstrip("v")
+        assets = data.get("assets", [])
+        if not assets:
+            return None, None
+        download_url = assets[0]["browser_download_url"]
+        return tag_version, download_url
+    except requests.RequestException:
+        return None, None
 
-        creds = authentication_gmail(key_file=key_path)
+def check_and_update():
+    current_version = get_current_version()
+    latest_version, download_url = get_latest_version_and_url()
 
-        print("Verificando acceso a Gmail...")
-        if build('gmail', 'v1', credentials=creds).users().messages().list(userId='me').execute():
-            print("Acceso exitoso a Gmail.")
+    if latest_version and latest_version != current_version:
+        root = tk.Tk()
+        root.withdraw()
+        respuesta = messagebox.askyesno(
+            "Actualización disponible",
+            f"Se encontró una nueva versión {latest_version}.\n¿Deseas actualizar ahora?"
+        )
+        if respuesta:
+            try:
+                r = requests.get(download_url)
+                r.raise_for_status()
+                with zipfile.ZipFile(io.BytesIO(r.content)) as zip_ref:
+                    nombre_raiz = zip_ref.namelist()[0].split("/")[0]
+                    zip_ref.extractall("tmp_update")
 
-        print("Creando carpeta en Google Drive...")
-        folder_name = config.get('configurations', 'folder_name')
-        drive_data = prueba_google_drive(folder_name, creds)
-        config.set('configurations', 'folder_id', drive_data['folder_id'])
-        config.set('configurations', 'url_folder', drive_data['url_folder'])
-        guardar_config(config, config_path)
+                # Proteger archivos importantes
+                archivos_protegidos = {"Config", "venv", "Logs", ".git", "version.txt"}
+                for archivo in os.listdir():
+                    if archivo in archivos_protegidos:
+                        continue
+                    if os.path.isdir(archivo):
+                        shutil.rmtree(archivo)
+                    else:
+                        os.remove(archivo)
 
-        print("Creando y probando hoja en Google Sheets...")
-        sheet_name = config.get('configurations', 'sheet_name')
-        csirt_names = json.loads(config.get('configurations', 'csirt_names'))
-        sheet_data = prueba_google_sheet(sheet_name, csirt_names, creds, config)
-        config.set('configurations', 'sheet_id', sheet_data['sheet_id'])
-        config.set('configurations', 'sheet_url', sheet_data['sheet_url'])
-        guardar_config(config, config_path)
+                # Copiar nuevos archivos
+                origen = os.path.join("tmp_update", nombre_raiz)
+                for archivo in os.listdir(origen):
+                    shutil.move(os.path.join(origen, archivo), archivo)
 
-        print("✅ Instalación y configuración completadas.")
+                # Escribir nueva versión
+                with open("version.txt", "w") as f:
+                    f.write(latest_version)
 
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        for folder in ['Config', 'Logs', 'Keys']:
-            folder_path = os.path.join(root_path, folder)
-            if os.path.exists(folder_path):
-                shutil.rmtree(folder_path)
+                shutil.rmtree("tmp_update")
+                messagebox.showinfo("Actualización", "Aplicación actualizada correctamente.\nSe reiniciará.")
+                os.execl(sys.executable, sys.executable, *sys.argv)
+            except Exception as e:
+                messagebox.showerror("Error de actualización", f"No se pudo actualizar:\n{e}")
+        root.destroy()
 
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    check_and_update()

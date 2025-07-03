@@ -28,7 +28,6 @@ def get_latest_version_and_url():
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        print(data)
         tag_version = data["tag_name"].lstrip("v")
         assets = data.get("assets", [])
         if not assets:
@@ -41,7 +40,6 @@ def get_latest_version_and_url():
 def check_and_update():
     current_version = get_current_version()
     latest_version, download_url = get_latest_version_and_url()
-    print(latest_version, download_url)
 
     if latest_version and latest_version != current_version:
         root = tk.Tk()
