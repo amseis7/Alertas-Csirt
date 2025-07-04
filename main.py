@@ -2,6 +2,7 @@ import tkinter as tk
 import tkinter.messagebox as messagebox
 import base64
 import os
+import datetime
 import requests
 import zipfile
 import io
@@ -52,6 +53,7 @@ def check_and_update():
             f"Se encontró una nueva versión {latest_version}.\n¿Deseas actualizar ahora?"
         )
         if respuesta:
+            backup_dir = None
             try:
                 r = requests.get(download_url)
                 r.raise_for_status()
@@ -62,15 +64,23 @@ def check_and_update():
                 # Copiar ruta base del zip
                 nuevos_archivos = os.listdir("tmp_update")
 
+                # Crear carpeta de respaldo
+                fecha = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_dir = f"backup_{fecha}"
+                os.makedirs(backup_dir, exist_ok=True)
+
                 for archivo in nuevos_archivos:
                     src = os.path.join("tmp_update", archivo)
                     dst = os.path.join(os.getcwd(), archivo)
 
-                    # Si e xiste algo con el mismo nombre, eliminarlo
+                    # Si el archivo ya existe, hacer respaldo
                     if os.path.exists(dst):
+                        backup_path = os.path.join(backup_dir, archivo)
                         if os.path.isdir(dst):
+                            shutil.copytree(dst, backup_path, dirs_exist_ok=True)
                             shutil.rmtree(dst)
                         else:
+                            shutil.copy2(dst, backup_path)
                             os.remove(dst)
 
                     # Mover desde tmp_update a raiz
@@ -80,13 +90,35 @@ def check_and_update():
                 with open("version.txt", "w") as f:
                     f.write(latest_version)
 
-                shutil.rmtree("tmp_update")
                 messagebox.showinfo("Actualización", "Aplicación actualizada correctamente.\nSe reiniciará.")
+
                 subprocess.Popen([sys.executable] + sys.argv)
                 sys.exit()
 
             except Exception as e:
+                # Restaurar desde backup si existe
+                if backup_dir and os.path.exists(backup_dir):
+                    for item in os.listdir(backup_dir):
+                        bkp_path = os.path.join(backup_dir, item)
+                        dst_path = os.path.join(os.getcwd(), item)
+
+                        if os.path.exists(dst_path):
+                            if os.path.isdir(dst_path):
+                                shutil.rmtree(dst_path)
+                            else:
+                                os.remove(dst_path)
+
+                        if os.path.isdir(bkp_path):
+                            shutil.copytree(bkp_path, dst_path, dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(bkp_path, dst_path)
+
                 messagebox.showerror("Error de actualización", f"No se pudo actualizar:\n{e}")
+
+            finally:
+                shutil.rmtree("tmp_update", ignore_errors=True)
+                if backup_dir and os.path.exists(backup_dir):
+                    shutil.rmtree(backup_dir, ignore_errors=True)
         root.destroy()
 
 
