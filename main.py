@@ -7,7 +7,7 @@ import zipfile
 import io
 import shutil
 import sys
-import webbrowser
+import subprocess
 
 from Modules.GUI import MiApp
 from Modules.icon import img
@@ -56,19 +56,22 @@ def check_and_update():
                     nombre_raiz = zip_ref.namelist()[0].split("/")[0]
                     zip_ref.extractall("tmp_update")
 
-                # Proteger archivos importantes
-                archivos_protegidos = {"Config", "venv", "Logs", ".git", "version.txt"}
-                for archivo in os.listdir():
-                    if archivo in archivos_protegidos:
-                        continue
-                    if os.path.isdir(archivo):
-                        shutil.rmtree(archivo)
-                    else:
-                        os.remove(archivo)
+                # Copiar ruta base del zip
+                origen = os.path.join("tmp_update", nombre_raiz)
+
+                # Identificar archivos y carpetas a reemplazar
+                archivos_nuevos = os.listdir(origen)
+
+                # Eliminar solo los archivos y carpetas que serán reemplazados
+                for archivo in archivos_nuevos:
+                    if os.path.exists(archivo):
+                        if os.path.isdir(archivo):
+                            shutil.rmtree(archivo)
+                        else:
+                            os.remove(archivo)
 
                 # Copiar nuevos archivos
-                origen = os.path.join("tmp_update", nombre_raiz)
-                for archivo in os.listdir(origen):
+                for archivo in archivos_nuevos:
                     shutil.move(os.path.join(origen, archivo), archivo)
 
                 # Escribir nueva versión
@@ -77,7 +80,9 @@ def check_and_update():
 
                 shutil.rmtree("tmp_update")
                 messagebox.showinfo("Actualización", "Aplicación actualizada correctamente.\nSe reiniciará.")
-                os.execl(sys.executable, sys.executable, *sys.argv)
+                subprocess.Popen([sys.executable] + sys.argv)
+                sys.exit()
+
             except Exception as e:
                 messagebox.showerror("Error de actualización", f"No se pudo actualizar:\n{e}")
         root.destroy()
