@@ -46,7 +46,7 @@ def get_latest_version_and_url():
             return None, None
         download_url = assets[0]["browser_download_url"]
         return tag_version, download_url
-    except requests.RequestException:
+    except requests.RequestException as e:
         logger.error(f"Error al obtener informacion de actualización: {e}")
         return None, None
 
