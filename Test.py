@@ -54,7 +54,7 @@ def check_and_update():
                     zip_ref.extractall("tmp_update")
 
                 # Proteger archivos importantes
-                archivos_protegidos = {"Config", "venv", "Logs", ".git", "version.txt"}
+                archivos_protegidos = {"Config", "venv", "Logs", ".git", "version.txt", "tmp_update", "requeriment.txt"}
                 for archivo in os.listdir():
                     if archivo in archivos_protegidos:
                         continue
