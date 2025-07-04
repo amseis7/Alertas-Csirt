@@ -12,23 +12,32 @@ import subprocess
 
 from Modules.GUI import MiApp
 from Modules.icon import img
+from Modules.logger import setup_logger
+from dotenv import load_dotenv
 
-GITHUB_OWNER = "amseis7"
-GITHUB_REPO = "Alertas-Csirt"
+load_dotenv()
+GITHUB_OWNER = os.getenv("GITHUB_OWNER", "default_owner")
+GITHUB_REPO = os.getenv("GITHUB_REPO", "default_repo")
+UPDATE_TIMEOUT = int(os.getenv("UPDATE_TIMEOUT", "10"))
 
+# Inicializar logger
+logger = setup_logger(log_file="Logs/update.log")
 
 def get_current_version():
     try:
         with open("version.txt", "r") as f:
-            return f.read().strip()
+            version = f.read().strip()
+            logger.info(f"Version actual: {version}")
+            return version
     except FileNotFoundError:
+        logger.warning("Archivo version.txt no encontrado. Usando versión por defecto")
         return "0.0.0"  # Valor por defecto si no existe el archivo
 
 
 def get_latest_version_and_url():
     url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=UPDATE_TIMEOUT)
         response.raise_for_status()
         data = response.json()
         tag_version = data["tag_name"].lstrip("v")
@@ -38,6 +47,7 @@ def get_latest_version_and_url():
         download_url = assets[0]["browser_download_url"]
         return tag_version, download_url
     except requests.RequestException:
+        logger.error(f"Error al obtener informacion de actualización: {e}")
         return None, None
 
 
@@ -58,7 +68,6 @@ def check_and_update():
                 r = requests.get(download_url)
                 r.raise_for_status()
                 with zipfile.ZipFile(io.BytesIO(r.content)) as zip_ref:
-                    # nombre_raiz = zip_ref.namelist()[0].split("/")[0]
                     zip_ref.extractall("tmp_update")
 
                 # Copiar ruta base del zip
@@ -91,11 +100,13 @@ def check_and_update():
                     f.write(latest_version)
 
                 messagebox.showinfo("Actualización", "Aplicación actualizada correctamente.\nSe reiniciará.")
-
+                logger.info(f"Actualización completada a versión {latest_version}")
+                shutil.rmtree("tmp_update", ignore_errors=True)
                 subprocess.Popen([sys.executable] + sys.argv)
                 sys.exit()
 
             except Exception as e:
+                logger.exception(f"Error durante el proceso de actualización: {e}")
                 # Restaurar desde backup si existe
                 if backup_dir and os.path.exists(backup_dir):
                     for item in os.listdir(backup_dir):
@@ -119,6 +130,7 @@ def check_and_update():
                 shutil.rmtree("tmp_update", ignore_errors=True)
                 if backup_dir and os.path.exists(backup_dir):
                     shutil.rmtree(backup_dir, ignore_errors=True)
+
         root.destroy()
 
 
