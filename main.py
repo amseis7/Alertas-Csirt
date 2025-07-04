@@ -15,12 +15,14 @@ from Modules.icon import img
 GITHUB_OWNER = "amseis7"
 GITHUB_REPO = "Alertas-Csirt"
 
+
 def get_current_version():
     try:
         with open("version.txt", "r") as f:
             return f.read().strip()
     except FileNotFoundError:
         return "0.0.0"  # Valor por defecto si no existe el archivo
+
 
 def get_latest_version_and_url():
     url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
@@ -36,6 +38,7 @@ def get_latest_version_and_url():
         return tag_version, download_url
     except requests.RequestException:
         return None, None
+
 
 def check_and_update():
     current_version = get_current_version()
@@ -53,26 +56,25 @@ def check_and_update():
                 r = requests.get(download_url)
                 r.raise_for_status()
                 with zipfile.ZipFile(io.BytesIO(r.content)) as zip_ref:
-                    nombre_raiz = zip_ref.namelist()[0].split("/")[0]
+                    # nombre_raiz = zip_ref.namelist()[0].split("/")[0]
                     zip_ref.extractall("tmp_update")
 
                 # Copiar ruta base del zip
-                origen = os.path.join("tmp_update", nombre_raiz)
+                nuevos_archivos = os.listdir("tmp_update")
 
-                # Identificar archivos y carpetas a reemplazar
-                archivos_nuevos = os.listdir(origen)
+                for archivo in nuevos_archivos:
+                    src = os.path.join("tmp_update", archivo)
+                    dst = os.path.join(os.getcwd(), archivo)
 
-                # Eliminar solo los archivos y carpetas que serán reemplazados
-                for archivo in archivos_nuevos:
-                    if os.path.exists(archivo):
-                        if os.path.isdir(archivo):
-                            shutil.rmtree(archivo)
+                    # Si e xiste algo con el mismo nombre, eliminarlo
+                    if os.path.exists(dst):
+                        if os.path.isdir(dst):
+                            shutil.rmtree(dst)
                         else:
-                            os.remove(archivo)
+                            os.remove(dst)
 
-                # Copiar nuevos archivos
-                for archivo in archivos_nuevos:
-                    shutil.move(os.path.join(origen, archivo), archivo)
+                    # Mover desde tmp_update a raiz
+                    shutil.move(src, dst)
 
                 # Escribir nueva versión
                 with open("version.txt", "w") as f:
@@ -86,6 +88,7 @@ def check_and_update():
             except Exception as e:
                 messagebox.showerror("Error de actualización", f"No se pudo actualizar:\n{e}")
         root.destroy()
+
 
 def main():
     # Crear y guardar ícono temporal
@@ -105,6 +108,7 @@ def main():
     finally:
         if os.path.exists("tmp.ico"):
             os.remove("tmp.ico")
+
 
 if __name__ == "__main__":
     check_and_update()

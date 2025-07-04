@@ -9,22 +9,19 @@ import shutil
 import sys
 import webbrowser
 
-origen = os.path.join("tmp_update", "Modules")
-update_files = os.listdir("tmp_update")
+archivo_nuevo = os.listdir("tmp_update")
 files_project = os.listdir()
 
-path_replacement_files = []
+for archivo in archivo_nuevo:
+    if archivo in files_project:
+        src = os.path.join(os.getcwd(), "tmp_update", archivo)
+        dst = os.path.join(os.getcwd(), archivo)
 
-for i in update_files:
-    if i in files_project:
-        src = os.path.join(os.getcwd(), "tmp_update", i)
-        dst = os.path.join(os.getcwd(), i)
-
-        if os.path.exists(i):
-            if os.path.isdir(i):
-                shutil.rmtree(i)
+        if os.path.exists(archivo):
+            if os.path.isdir(archivo):
+                shutil.rmtree(archivo)
             else:
-                os.remove(i)
+                os.remove(archivo)
             shutil.move(src, dst)
 
 
