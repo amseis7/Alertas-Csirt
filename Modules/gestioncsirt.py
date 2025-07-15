@@ -161,7 +161,6 @@ class GestionIoc(threading.Thread):
 
         for name in sheets_name:
             data = sheet.values().get(spreadsheetId=self.sheet_id, range=name).execute()
-            print(data)
             result = handler_funtions.get_alert_csirt_lastweek(data, first_day_lastweek, last_day_lastweek)
             if result:
                 alert_csirt_last_week[name] = result
