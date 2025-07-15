@@ -112,13 +112,18 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+#.env
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Ignorar archivos de log y backups
+Logs/
+*.log
+backup_*/
 
 # Spyder project settings
 .spyderproject
