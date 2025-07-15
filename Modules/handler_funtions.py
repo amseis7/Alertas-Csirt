@@ -326,14 +326,41 @@ def load_ioc_csirt(credentials, spreadsheet_id, data):
     return Modules.handler_variables_email.style_html + html_table
 
 
-def get_alert_csirt_lastweek(data, first_day, last_day):
-    headers = data.get('values', [])[0]
-    date_idx = headers.index("date") if "date" in headers else -1
-    rows = data.get('values', [])[1:]
-    if date_idx == -1:
+def get_alert_csirt_lastweek(data, first_day, last_day, date_column_names=None):
+    if date_column_names is None:
+        date_column_names = ["Fecha de realizacion", "date", "Fecha"]
+
+    values = data.get('values', [])
+    if not values:
         return []
-    filtered = [row for row in rows if len(row) > date_idx and first_day.strftime("%d/%m/%Y") <= row[date_idx] <= last_day.strftime("%d/%m/%Y")]
-    return filtered
+
+    # Buscar Fila de headers
+    header_row_idx = None
+    date_idx = -1
+    for i, row in enumerate(values):
+        for colname in date_column_names:
+            if colname in row:
+                header_row_idx = i
+                date_idx = row.index(colname)
+                break
+        if header_row_idx is not None:
+            break
+    if header_row_idx is None or date_idx == -1:
+        return []
+
+    rows = values[header_row_idx+1:]
+    result = []
+    for row in rows:
+        if len(row) <= date_idx:
+            continue
+        fecha_str =row[date_idx]
+        try:
+            fecha = datetime.strptime(fecha_str, "%d/%m/%Y")
+            if first_day <= fecha <= last_day:
+                result.append(row)
+        except Exception:
+            continue
+    return result
 
 
 def get_html_report(csirt_data, csirt_name):
