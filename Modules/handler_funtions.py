@@ -179,7 +179,9 @@ def search_csirt(list_csirt, gui, csirt_name, responsable='', ticket=''):
                     elif re.search(r'(?:(?<=\b)\d)?(\w{3})(?=\d{2})', link).group(1) in filter_csirt:
                         continue
                     else:
-                        revision = re.search(r'\b\d{2}\b', link.replace("/", "")).group() if re.search(r'\b\d{2}\b', link.replace("/", "")) else "0"
+                        revision = re.search(r'\b\d{2}\b',
+                                             link.replace("/", "")).group() \
+                            if re.search(r'\b\d{2}\b', link.replace("/", "")) else "0"
                         dict_temp = {
                             'name': link.replace("/", ""),
                             'revision': revision,
@@ -305,7 +307,8 @@ def load_ioc_csirt(credentials, spreadsheet_id, data):
     for info in info_sheets:
         if info['properties']['title'] == 'Hoja 1':
             sheet.batchUpdate(spreadsheetId=spreadsheet_id,
-                              body={'requests': [{'deleteSheet': {'sheetId': info['properties']['sheetId']}}]}).execute()
+                              body={
+                                  'requests': [{'deleteSheet': {'sheetId': info['properties']['sheetId']}}]}).execute()
 
     flat_iocs = {'url': [], 'ips': [], 'hash': [], 'correo': [], 'smtp': []}
     for ioc_dict in ioc_all:
@@ -446,7 +449,9 @@ def crear_configuracion(root_path, config_cfg):
     try:
         if not os.path.isfile(ruta_archivo_cfg):
             while True:
-                credentials_name = os.path.join(root_path, input("Ingresar nombre del archivo json descargada de Google: ").strip())
+                credentials_name = os.path.join(root_path,
+                                                input("Ingresar nombre del archivo json descargada de Google: ").strip()
+                                                )
                 domain = input("Ingresar dominio permitido de recepción de correo (ej. @gmail.com): ").strip()
                 time_wait_str = input("Ingrese el tiempo de cada búsqueda de correos (En segundos): ").strip()
                 folder_name = input("Ingresar el nombre de la carpeta compartida a crear en Google Drive: ").strip()
