@@ -2,7 +2,6 @@ import os
 import re
 import json
 import copy
-import time
 import base64
 import locale
 import logging
@@ -393,7 +392,6 @@ def get_html_report(csirt_data, csirt_name):
                     'OK'
                 ])
 
-
             matriz_data.append(data_individual)
             count += 1
     df = pd.DataFrame(matriz_data, columns=columns)
@@ -421,6 +419,7 @@ def mark_as_read(creds, msg_id):
     service = build('gmail', 'v1', credentials=creds)
     service.users().messages().modify(userId='me', id=msg_id, body={'removeLabelIds': ['UNREAD']}).execute()
 
+
 def validations_and_get_email(creds, user_id='me', msg_id=''):
     service = build('gmail', 'v1', credentials=creds)
     email_data = {}
@@ -440,6 +439,7 @@ def validations_and_get_email(creds, user_id='me', msg_id=''):
         email_data['isCorrect'] = False
 
     return email_data
+
 
 def crear_configuracion(root_path, config_cfg):
     ruta_archivo_cfg = os.path.join(root_path, 'Config', "configuration.cfg")
@@ -496,6 +496,7 @@ def crear_configuracion(root_path, config_cfg):
     except Exception as e:
         print(f"Error al crear el archivo .cfg: {e}")
 
+
 def prueba_google_drive(folder_name, creds):
     folder_metadata = {
         'name': folder_name,
@@ -521,9 +522,11 @@ def prueba_google_drive(folder_name, creds):
     url_folder = get_file_folder_url(drive_service, folder_id)
     return {'url_folder': url_folder, 'folder_id': folder_id}
 
+
 def get_file_folder_url(service, file_id):
     file_info = service.files().get(fileId=file_id, fields='webViewLink').execute()
     return file_info.get('webViewLink', None)
+
 
 def check_file_exists(service, file_name, type_file):
     results = service.files().list(q=f"name='{file_name}' and mimeType='{type_file}' and trashed=false").execute()

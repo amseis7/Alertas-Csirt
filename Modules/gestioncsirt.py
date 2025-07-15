@@ -85,7 +85,7 @@ class GestionIoc(threading.Thread):
                 self.creds,
                 sender_to=email_info['sender_email'],
                 reply_subject=f"Re: {email_info['subject']}",
-                reply_body=Modules.handler_variables_email.body_confirmation_validation
+                reply_body=Modules.handler_variables_email.body_messages["validation"]
             )
             self.gui.update_text("info", f"Validacion exitosa, respuesta enviada a: {email_info['sender_email']}")
 
@@ -98,7 +98,7 @@ class GestionIoc(threading.Thread):
                 self.creds,
                 sender_to=email_info['sender_email'],
                 reply_subject=f"Re: {email_info['subject']}",
-                reply_body=f"{Modules.handler_variables_email.body_confirmation_invalidation} {email_info['subject']}"
+                reply_body=f"{Modules.handler_variables_email.body_messages['invalidation']} {email_info['subject']}"
             )
             self.gui.update_text("warning", f"Correo fallido: {email_info['subject']}")
 
@@ -133,9 +133,9 @@ class GestionIoc(threading.Thread):
                 sender_to=email_info['sender_email'],
                 reply_subject=f"Re: {email_info['subject']}",
                 reply_body=(
-                    f"{Modules.handler_variables_email.body_send_alert}{html_table}"
-                    f"{Modules.handler_variables_email.body_link_sheet}{self.sheet_url}"
-                    f"{Modules.handler_variables_email.body_ioc}{self.url_folder}"
+                    f"{Modules.handler_variables_email.body_messages['send_alert']}{html_table}"
+                    f"{Modules.handler_variables_email.body_messages['link_sheet']}{self.sheet_url}"
+                    f"{Modules.handler_variables_email.body_messages['ioc']}{self.url_folder}"
                 )
             )
         else:
@@ -143,7 +143,7 @@ class GestionIoc(threading.Thread):
                 self.creds,
                 sender_to=email_info['sender_email'],
                 reply_subject=f"Re: {email_info['subject']}",
-                reply_body=Modules.handler_variables_email.body_not_new_alerts
+                reply_body=Modules.handler_variables_email.body_messages['no_alerts']
             )
             self.gui.update_text("info", f"No hay alertas CSIRT nuevas, correo enviado a {email_info['sender_email']}")
 
@@ -178,8 +178,8 @@ class GestionIoc(threading.Thread):
                 f"al {last_day_lastweek.day}-{str(last_day_lastweek.month).zfill(2)}-{last_day_lastweek.year}"
             ),
             reply_body=(
-                f"{Modules.handler_variables_email.body_send_report}<br>{html_email}<br>"
-                f"{Modules.handler_variables_email.body_link_sheet}{self.sheet_url}"
+                f"{Modules.handler_variables_email.body_messages['send_report']}<br>{html_email}<br>"
+                f"{Modules.handler_variables_email.body_messages['link_sheet']}{self.sheet_url}"
             )
         )
 
