@@ -122,7 +122,6 @@ venv.bak/
 Keys/
 
 # Ignorar archivos de log y backups
-Logs/
 *.log
 backup_*/
 
