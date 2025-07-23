@@ -179,7 +179,9 @@ def search_csirt(list_csirt, gui, csirt_name, responsable='', ticket=''):
                     elif re.search(r'(?:(?<=\b)\d)?(\w{3})(?=\d{2})', link).group(1) in filter_csirt:
                         continue
                     else:
-                        revision = re.search(r'\b\d{2}\b', link.replace("/", "")).group() if re.search(r'\b\d{2}\b', link.replace("/", "")) else "0"
+                        revision = re.search(r'\b\d{2}\b',
+                                             link.replace("/", "")).group() \
+                            if re.search(r'\b\d{2}\b', link.replace("/", "")) else "0"
                         dict_temp = {
                             'name': link.replace("/", ""),
                             'revision': revision,
@@ -305,7 +307,8 @@ def load_ioc_csirt(credentials, spreadsheet_id, data):
     for info in info_sheets:
         if info['properties']['title'] == 'Hoja 1':
             sheet.batchUpdate(spreadsheetId=spreadsheet_id,
-                              body={'requests': [{'deleteSheet': {'sheetId': info['properties']['sheetId']}}]}).execute()
+                              body={
+                                  'requests': [{'deleteSheet': {'sheetId': info['properties']['sheetId']}}]}).execute()
 
     flat_iocs = {'url': [], 'ips': [], 'hash': [], 'correo': [], 'smtp': []}
     for ioc_dict in ioc_all:
@@ -325,14 +328,41 @@ def load_ioc_csirt(credentials, spreadsheet_id, data):
     return Modules.handler_variables_email.style_html + html_table
 
 
-def get_alert_csirt_lastweek(data, first_day, last_day):
-    headers = data.get('values', [])[0]
-    date_idx = headers.index("date") if "date" in headers else -1
-    rows = data.get('values', [])[1:]
-    if date_idx == -1:
+def get_alert_csirt_lastweek(data, first_day, last_day, date_column_names=None):
+    if date_column_names is None:
+        date_column_names = ["Fecha de realizacion", "date", "Fecha"]
+
+    values = data.get('values', [])
+    if not values:
         return []
-    filtered = [row for row in rows if len(row) > date_idx and first_day.strftime("%d/%m/%Y") <= row[date_idx] <= last_day.strftime("%d/%m/%Y")]
-    return filtered
+
+    # Buscar Fila de headers
+    header_row_idx = None
+    date_idx = -1
+    for i, row in enumerate(values):
+        for colname in date_column_names:
+            if colname in row:
+                header_row_idx = i
+                date_idx = row.index(colname)
+                break
+        if header_row_idx is not None:
+            break
+    if header_row_idx is None or date_idx == -1:
+        return []
+
+    rows = values[header_row_idx+1:]
+    result = []
+    for row in rows:
+        if len(row) <= date_idx:
+            continue
+        fecha_str =row[date_idx]
+        try:
+            fecha = datetime.strptime(fecha_str, "%d/%m/%Y")
+            if first_day <= fecha <= last_day:
+                result.append(row)
+        except Exception:
+            continue
+    return result
 
 
 def get_html_report(csirt_data, csirt_name):
@@ -419,7 +449,9 @@ def crear_configuracion(root_path, config_cfg):
     try:
         if not os.path.isfile(ruta_archivo_cfg):
             while True:
-                credentials_name = os.path.join(root_path, input("Ingresar nombre del archivo json descargada de Google: ").strip())
+                credentials_name = os.path.join(root_path,
+                                                input("Ingresar nombre del archivo json descargada de Google: ").strip()
+                                                )
                 domain = input("Ingresar dominio permitido de recepción de correo (ej. @gmail.com): ").strip()
                 time_wait_str = input("Ingrese el tiempo de cada búsqueda de correos (En segundos): ").strip()
                 folder_name = input("Ingresar el nombre de la carpeta compartida a crear en Google Drive: ").strip()
