@@ -86,7 +86,7 @@ def main():
     print("#" * 55)
 
     root_path = os.getcwd()
-    requirements_path = os.path.join(root_path, "requeriment.txt")
+    requirements_path = os.path.join(root_path, "requeriments.txt")
     config = configparser.ConfigParser()
 
     instalar_dependencias(requirements_path)
