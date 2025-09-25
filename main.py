@@ -155,5 +155,5 @@ def main():
 
 
 if __name__ == "__main__":
-    check_and_update()
+    #check_and_update()
     main()
